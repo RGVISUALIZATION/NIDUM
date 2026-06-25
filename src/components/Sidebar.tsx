@@ -10,6 +10,7 @@ import {
   CreditCard,
   Upload,
   Calendar,
+  CalendarDays,
   Wrench,
   LogOut,
   ChevronRight,
@@ -28,8 +29,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/units',     label: 'Departamentos',  icon: Home,            adminOnly: true },
   { href: '/dashboard/charges',   label: 'Cargos',         icon: CreditCard,      adminOnly: true },
   { href: '/dashboard/payments',  label: 'Pagos',          icon: Upload },
-  { href: '/dashboard/periods',   label: 'Periodos',       icon: Calendar,        adminOnly: true },
-  { href: '/dashboard/maintenance', label: 'Mantenimiento', icon: Wrench },
+  { href: '/dashboard/periods',       label: 'Periodos',      icon: Calendar,     adminOnly: true },
+  { href: '/dashboard/reservations', label: 'Áreas comunes', icon: CalendarDays },
+  { href: '/dashboard/maintenance',  label: 'Mantenimiento', icon: Wrench },
 ]
 
 export default function Sidebar({ profile }: { profile: Profile }) {
