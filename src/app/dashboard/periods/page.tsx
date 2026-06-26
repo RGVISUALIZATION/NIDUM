@@ -125,9 +125,8 @@ export default async function PeriodsPage() {
               {periods.map((p, i) => (
                 <tr
                   key={p.id}
+                  className="hover:bg-gray-50 transition-colors"
                   style={{ borderTop: i > 0 ? `1px solid var(--border)` : undefined }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-page)')}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
                 >
                   <td className="px-5 py-3.5 font-semibold" style={{ color: 'var(--navy)' }}>
                     {MESES[p.period_month - 1]} {p.period_year}
