@@ -4,6 +4,11 @@ import { formatDate, formatMXN } from '@/lib/utils'
 import { CalendarDays, Plus, Clock, Users } from 'lucide-react'
 import CancelReservation from './CancelReservation'
 
+const STATUS_RESERVA: Record<string, { label: string; color: string }> = {
+  pending:   { label: 'Pendiente de confirmar', color: 'text-amber-700 bg-amber-50 border-amber-200' },
+  confirmed: { label: 'Confirmada',              color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+}
+
 export default async function ReservationsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,7 +23,7 @@ export default async function ReservationsPage() {
     .eq('is_active', true)
     .order('name')
 
-  // Reservas del mes actual en adelante
+  // Reservas activas (pendientes y confirmadas) del día de hoy en adelante
   const today = new Date().toISOString().split('T')[0]
   const reservationsQuery = supabase
     .from('reservations')
@@ -28,7 +33,7 @@ export default async function ReservationsPage() {
       units(unit_number),
       profiles(full_name)
     `)
-    .eq('status', 'confirmed')
+    .in('status', ['pending', 'confirmed'])
     .gte('reservation_date', today)
     .order('reservation_date')
 
@@ -98,7 +103,7 @@ export default async function ReservationsPage() {
             {!isAdmin && (
               <a
                 href={`/dashboard/reservations/nueva?area=${area.id}`}
-                className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium border transition-colors"
+                className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium border transition-colors hover:bg-gray-50"
                 style={{ borderColor: 'var(--blue-action)', color: 'var(--blue-action)' }}
               >
                 <CalendarDays size={15} />
@@ -118,66 +123,72 @@ export default async function ReservationsPage() {
         <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           {reservations && reservations.length > 0 ? (
             <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-              {reservations.map(r => (
-                <div key={r.id} className="px-5 py-4 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    {/* Fecha */}
-                    <div
-                      className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: 'rgba(37,99,235,0.08)' }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--blue-action)' }}>
-                        {new Date(r.reservation_date + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).toUpperCase()}
-                      </span>
-                      <span className="text-lg font-bold leading-none" style={{ color: 'var(--navy)' }}>
-                        {new Date(r.reservation_date + 'T00:00:00').getDate()}
-                      </span>
+              {reservations.map(r => {
+                const estado = STATUS_RESERVA[r.status] ?? STATUS_RESERVA.pending
+                return (
+                  <div key={r.id} className="px-5 py-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      {/* Fecha */}
+                      <div
+                        className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: 'rgba(37,99,235,0.08)' }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--blue-action)' }}>
+                          {new Date(r.reservation_date + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).toUpperCase()}
+                        </span>
+                        <span className="text-lg font-bold leading-none" style={{ color: 'var(--navy)' }}>
+                          {new Date(r.reservation_date + 'T00:00:00').getDate()}
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm" style={{ color: 'var(--navy)' }}>
+                            {r.common_areas?.name}
+                          </p>
+                          {isAdmin && (
+                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                              · Depto {r.units?.unit_number}
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${estado.color}`}>
+                            {estado.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                            <Clock size={11} />
+                            {r.start_time.slice(0,5)} – {r.end_time.slice(0,5)}
+                          </span>
+                          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                            <Users size={11} />
+                            {r.guest_count} personas
+                          </span>
+                          {r.event_type && (
+                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                              · {r.event_type}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm" style={{ color: 'var(--navy)' }}>
-                          {r.common_areas?.name}
-                        </p>
-                        {isAdmin && (
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            · Depto {r.units?.unit_number}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          <Clock size={11} />
-                          {r.start_time.slice(0,5)} – {r.end_time.slice(0,5)}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      {r.cleaning_fee_applied > 0 && (
+                        <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                          {formatMXN(r.cleaning_fee_applied)} limpieza
                         </span>
-                        <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          <Users size={11} />
-                          {r.guest_count} personas
-                        </span>
-                        {r.event_type && (
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            · {r.event_type}
-                          </span>
-                        )}
-                      </div>
+                      )}
+                      <CancelReservation
+                        reservationId={r.id}
+                        isAdmin={isAdmin}
+                        isOwner={r.profile_id === user.id}
+                        reservationDate={r.reservation_date}
+                      />
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    {r.cleaning_fee_applied > 0 && (
-                      <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-                        {formatMXN(r.cleaning_fee_applied)} limpieza
-                      </span>
-                    )}
-                    <CancelReservation
-                      reservationId={r.id}
-                      isAdmin={isAdmin}
-                      isOwner={r.profile_id === user.id}
-                      reservationDate={r.reservation_date}
-                    />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
