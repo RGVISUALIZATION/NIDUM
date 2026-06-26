@@ -24,10 +24,6 @@ const STATUS_SYSTEM: Record<string, { label: string; color: string; dot: string 
   out_of_service: { label: 'Fuera de servicio',  color: 'text-red-700',    dot: 'bg-red-500' },
 }
 
-const PRIORITY_LABEL: Record<string, string> = {
-  low: 'Baja', medium: 'Media', high: 'Alta',
-}
-
 export default async function MaintenancePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -36,14 +32,12 @@ export default async function MaintenancePage() {
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
   const isAdmin = profile?.role === 'admin'
 
-  // Sistemas del edificio (tablero público)
   const { data: systems } = await supabase
     .from('maintenance_systems')
     .select('*')
     .eq('is_active', true)
     .order('display_order')
 
-  // Reportes
   let incidentsQuery = supabase
     .from('incidents')
     .select('*')
@@ -52,11 +46,9 @@ export default async function MaintenancePage() {
   if (!isAdmin) incidentsQuery = incidentsQuery.eq('reporter_id', user.id)
   const { data: incidents } = await incidentsQuery
 
-  // Categorías para mostrar el nombre
   const { data: categories } = await supabase.from('incident_categories').select('*')
   const categoryMap = new Map((categories ?? []).map(c => [c.id, c]))
 
-  // Conteo de reportes por status (para admin)
   const openCount = incidents?.filter(i => i.status === 'open').length ?? 0
   const inProgressCount = incidents?.filter(i => i.status === 'in_progress').length ?? 0
 
@@ -65,7 +57,7 @@ export default async function MaintenancePage() {
       <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold" style={{ color: 'var(--navy)' }}>
-            Mantenimiento
+            Reportes
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             {isAdmin
@@ -77,7 +69,7 @@ export default async function MaintenancePage() {
           {isAdmin && (
             <a
               href="/dashboard/maintenance/sistemas"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border hover:bg-gray-50 transition-colors"
               style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
             >
               <Settings size={15} />
@@ -86,16 +78,16 @@ export default async function MaintenancePage() {
           )}
           <a
             href="/dashboard/maintenance/nuevo"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity"
             style={{ backgroundColor: 'var(--blue-action)' }}
           >
             <Plus size={15} />
-            Reportar incidencia
+            Crear reporte
           </a>
         </div>
       </div>
 
-      {/* ============== TABLERO DEL EDIFICIO ============== */}
+      {/* TABLERO DEL EDIFICIO */}
       <div className="mb-8">
         <h2 className="font-semibold text-sm mb-3" style={{ color: 'var(--navy)' }}>
           Estado del edificio
@@ -137,7 +129,7 @@ export default async function MaintenancePage() {
         )}
       </div>
 
-      {/* ============== REPORTES ============== */}
+      {/* REPORTES */}
       <div>
         <h2 className="font-semibold text-sm mb-3" style={{ color: 'var(--navy)' }}>
           {isAdmin ? 'Reportes del edificio' : 'Mis reportes'}
@@ -154,9 +146,7 @@ export default async function MaintenancePage() {
                   <a
                     key={inc.id}
                     href={`/dashboard/maintenance/${inc.id}`}
-                    className="flex items-start gap-3 px-5 py-4 transition-colors"
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-page)')}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
+                    className="flex items-start gap-3 px-5 py-4 hover:bg-gray-50 transition-colors"
                   >
                     <div
                       className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
