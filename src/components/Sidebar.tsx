@@ -12,6 +12,7 @@ import {
   Calendar,
   CalendarDays,
   Wrench,
+  TrendingDown,
   LogOut,
   ChevronRight,
 } from 'lucide-react'
@@ -25,13 +26,14 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard',           label: 'Inicio',         icon: LayoutDashboard },
-  { href: '/dashboard/units',     label: 'Departamentos',  icon: Home,            adminOnly: true },
-  { href: '/dashboard/charges',   label: 'Cargos',         icon: CreditCard,      adminOnly: true },
-  { href: '/dashboard/payments',  label: 'Pagos',          icon: Upload },
-  { href: '/dashboard/periods',       label: 'Periodos',      icon: Calendar,     adminOnly: true },
-  { href: '/dashboard/reservations', label: 'Áreas comunes', icon: CalendarDays },
-  { href: '/dashboard/maintenance',  label: 'Mantenimiento', icon: Wrench },
+  { href: '/dashboard',                label: 'Inicio',         icon: LayoutDashboard },
+  { href: '/dashboard/units',          label: 'Departamentos',  icon: Home,            adminOnly: true },
+  { href: '/dashboard/charges',        label: 'Cargos',         icon: CreditCard,      adminOnly: true },
+  { href: '/dashboard/payments',       label: 'Pagos',          icon: Upload },
+  { href: '/dashboard/periods',        label: 'Periodos',       icon: Calendar,        adminOnly: true },
+  { href: '/dashboard/reservations',   label: 'Áreas comunes',  icon: CalendarDays },
+  { href: '/dashboard/maintenance',    label: 'Mantenimiento',  icon: Wrench },
+  { href: '/dashboard/egresos',        label: 'Egresos',        icon: TrendingDown,    adminOnly: true },
 ]
 
 export default function Sidebar({ profile }: { profile: Profile }) {
