@@ -29,7 +29,6 @@ export default async function PaymentsPage() {
           </p>
         </div>
 
-        {/* Filtro por estado */}
         <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
@@ -44,9 +43,8 @@ export default async function PaymentsPage() {
                 {payments?.map((p, i) => (
                   <tr
                     key={p.id}
+                    className="hover:bg-gray-50 transition-colors"
                     style={{ borderTop: i > 0 ? `1px solid var(--border)` : undefined }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-page)')}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
                   >
                     <td className="px-5 py-3.5 font-medium" style={{ color: 'var(--navy)' }}>
                       Depto {p.units?.unit_number}
@@ -121,7 +119,7 @@ export default async function PaymentsPage() {
     )
   }
 
-  // Vista residente: subir comprobante
+  // Vista residente
   const { data: residency } = await supabase
     .from('unit_residents')
     .select('unit_id, units(unit_number, monthly_fee)')
