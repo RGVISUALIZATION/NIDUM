@@ -12,22 +12,39 @@ export default async function UnitsPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const { data: units } = await supabase
+  // Traer los departamentos (sin joins anidados)
+  const { data: units, error: unitsErr } = await supabase
     .from('units')
-    .select(`
-      *,
-      unit_residents(
-        profile_id,
-        role,
-        is_primary,
-        end_date,
-        profiles(full_name, phone)
-      )
-    `)
+    .select('*')
     .order('unit_number')
 
-  const activeResidents = (unit: any) =>
-    unit.unit_residents?.filter((r: any) => !r.end_date) ?? []
+  if (unitsErr) {
+    console.error('Error al cargar departamentos:', unitsErr)
+  }
+
+  // Traer todos los residentes activos en un solo query
+  const { data: residents } = await supabase
+    .from('unit_residents')
+    .select('unit_id, profile_id, role, is_primary, end_date')
+    .is('end_date', null)
+
+  // Traer perfiles de esos residentes
+  const profileIds = [...new Set((residents ?? []).map(r => r.profile_id))]
+  const { data: residentProfiles } = profileIds.length > 0
+    ? await supabase
+        .from('profiles')
+        .select('id, full_name, phone')
+        .in('id', profileIds)
+    : { data: [] }
+
+  // Construir un mapa por unit_id de los residentes con nombre
+  const profilesMap = new Map((residentProfiles ?? []).map(p => [p.id, p]))
+  const residentsByUnit = new Map<string, any[]>()
+  ;(residents ?? []).forEach(r => {
+    const arr = residentsByUnit.get(r.unit_id) ?? []
+    arr.push({ ...r, profile: profilesMap.get(r.profile_id) })
+    residentsByUnit.set(r.unit_id, arr)
+  })
 
   return (
     <div>
@@ -66,15 +83,12 @@ export default async function UnitsPage() {
             </thead>
             <tbody>
               {units?.map((unit, i) => {
-                const residents = activeResidents(unit)
-                const primary = residents.find((r: any) => r.is_primary) ?? residents[0]
+                const unitResidents = residentsByUnit.get(unit.id) ?? []
+                const primary = unitResidents.find(r => r.is_primary) ?? unitResidents[0]
                 return (
                   <tr
                     key={unit.id}
-                    className="transition-colors"
                     style={{ borderTop: i > 0 ? `1px solid var(--border)` : undefined }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-page)')}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
@@ -86,9 +100,9 @@ export default async function UnitsPage() {
                     </td>
                     <td className="px-5 py-3.5" style={{ color: 'var(--text-secondary)' }}>{unit.floor ?? '—'}</td>
                     <td className="px-5 py-3.5">
-                      {primary ? (
+                      {primary?.profile ? (
                         <div>
-                          <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{primary.profiles.full_name}</p>
+                          <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{primary.profile.full_name}</p>
                           <p className="text-xs capitalize" style={{ color: 'var(--text-secondary)' }}>{primary.role === 'owner' ? 'Propietario' : 'Inquilino'}</p>
                         </div>
                       ) : (
@@ -116,8 +130,8 @@ export default async function UnitsPage() {
         {/* Lista móvil */}
         <div className="sm:hidden divide-y" style={{ borderColor: 'var(--border)' }}>
           {units?.map(unit => {
-            const residents = activeResidents(unit)
-            const primary = residents.find((r: any) => r.is_primary) ?? residents[0]
+            const unitResidents = residentsByUnit.get(unit.id) ?? []
+            const primary = unitResidents.find(r => r.is_primary) ?? unitResidents[0]
             return (
               <div key={unit.id} className="px-4 py-4">
                 <div className="flex items-center justify-between">
@@ -132,9 +146,9 @@ export default async function UnitsPage() {
                   </div>
                   <p className="font-semibold text-sm" style={{ color: 'var(--navy)' }}>{formatMXN(unit.monthly_fee)}</p>
                 </div>
-                {primary && (
+                {primary?.profile && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
-                    {primary.profiles.full_name} · {primary.role === 'owner' ? 'Propietario' : 'Inquilino'}
+                    {primary.profile.full_name} · {primary.role === 'owner' ? 'Propietario' : 'Inquilino'}
                   </p>
                 )}
               </div>
@@ -148,11 +162,7 @@ export default async function UnitsPage() {
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               No hay departamentos registrados aún.
             </p>
-            <a
-              href="/dashboard/units/new"
-              className="text-sm font-medium"
-              style={{ color: 'var(--blue-action)' }}
-            >
+            <a href="/dashboard/units/new" className="text-sm font-medium" style={{ color: 'var(--blue-action)' }}>
               Agregar el primero →
             </a>
           </div>
