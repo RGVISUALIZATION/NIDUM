@@ -13,6 +13,7 @@ import {
   CalendarDays,
   Wrench,
   TrendingDown,
+  ScrollText,
   LogOut,
   ChevronRight,
 } from 'lucide-react'
@@ -34,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/reservations',   label: 'Áreas comunes',  icon: CalendarDays },
   { href: '/dashboard/maintenance',    label: 'Mantenimiento',  icon: Wrench },
   { href: '/dashboard/egresos',        label: 'Egresos',        icon: TrendingDown,    adminOnly: true },
+  { href: '/dashboard/transparency',   label: 'Transparencia',  icon: ScrollText },
 ]
 
 export default function Sidebar({ profile }: { profile: Profile }) {
