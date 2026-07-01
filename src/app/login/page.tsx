@@ -54,8 +54,7 @@ export default function LoginPage() {
             en un solo lugar.
           </h1>
           <p className="text-blue-300 text-base leading-relaxed max-w-sm">
-            Cuotas, pagos, reservas, reportes y comunicados. Diseñado para que
-            tu esposa administre con confianza y los vecinos estén siempre informados.
+            Cuotas, pagos, reservas, reportes y comunicados. Diseñado para administrar con confianza y los vecinos de NIDUM estén siempre informados.
           </p>
         </div>
 
