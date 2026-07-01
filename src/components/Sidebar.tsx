@@ -14,6 +14,7 @@ import {
   Wrench,
   TrendingDown,
   ScrollText,
+  Lock,
   LogOut,
   ChevronRight,
 } from 'lucide-react'
@@ -104,6 +105,14 @@ export default function Sidebar({ profile }: { profile: Profile }) {
             <p className="text-white text-sm font-medium truncate">{profile.full_name}</p>
             <p className="text-blue-300 text-xs capitalize">{isAdmin ? 'Administradora' : 'Residente'}</p>
           </div>
+          <Link
+            href="/dashboard/password"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full transition-all"
+            style={{ color: 'rgba(255,255,255,0.5)' }}
+          >
+            <Lock size={17} strokeWidth={1.5} />
+            Cambiar contraseña
+          </Link>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full transition-all"
