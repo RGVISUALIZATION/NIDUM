@@ -15,7 +15,6 @@ import {
   TrendingDown,
   ScrollText,
   Megaphone,
-  FolderOpen,
   Lock,
   LogOut,
   ChevronRight,
@@ -40,7 +39,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/egresos',        label: 'Egresos',        icon: TrendingDown,    adminOnly: true },
   { href: '/dashboard/transparency',   label: 'Transparencia',  icon: ScrollText },
   { href: '/dashboard/avisos',         label: 'Avisos',         icon: Megaphone },
-  { href: '/dashboard/documentos',     label: 'Documentos',     icon: FolderOpen },
 ]
 
 export default function Sidebar({ profile }: { profile: Profile }) {
