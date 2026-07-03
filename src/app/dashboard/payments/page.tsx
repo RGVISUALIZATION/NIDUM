@@ -4,6 +4,7 @@ import { formatMXN, formatDate, PAYMENT_STATUS_COLOR, PAYMENT_STATUS_LABEL } fro
 import Badge from '@/components/Badge'
 import PaymentUpload from './PaymentUpload'
 import PaymentVerify from './PaymentVerify'
+import AdminPaymentButton from './AdminPaymentButton'
 
 export default async function PaymentsPage() {
   const supabase = await createClient()
@@ -22,13 +23,17 @@ export default async function PaymentsPage() {
 
     return (
       <div>
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--navy)' }}>Pagos</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Revisa y verifica los comprobantes de pago de los vecinos
-          </p>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold" style={{ color: 'var(--navy)' }}>Pagos</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+              Revisa y verifica los comprobantes de pago de los vecinos
+            </p>
+          </div>
+          <AdminPaymentButton />
         </div>
 
+        {/* Tabla de pagos */}
         <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
@@ -43,7 +48,6 @@ export default async function PaymentsPage() {
                 {payments?.map((p, i) => (
                   <tr
                     key={p.id}
-                    className="hover:bg-gray-50 transition-colors"
                     style={{ borderTop: i > 0 ? `1px solid var(--border)` : undefined }}
                   >
                     <td className="px-5 py-3.5 font-medium" style={{ color: 'var(--navy)' }}>
