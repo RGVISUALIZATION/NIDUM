@@ -60,7 +60,7 @@ export default function LoginPage() {
 
         <div className="flex gap-8">
           <div>
-            <p className="text-white text-3xl font-semibold">100</p>
+            <p className="text-white text-3xl font-semibold">68</p>
             <p className="text-blue-300 text-sm mt-1">Departamentos</p>
           </div>
           <div>
