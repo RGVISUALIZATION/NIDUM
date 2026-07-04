@@ -31,17 +31,11 @@ export default async function TransparencyPage({ searchParams }: { searchParams:
     .eq('status', 'pagado')
     .order('expense_date', { ascending: false })
 
-  // Ingresos del mes (pagos verificados)
-  const firstDay = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`
-  const lastDay = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0]
-  const { data: payments } = await supabase
-    .from('payments')
-    .select('amount')
-    .eq('status', 'verified')
-    .gte('payment_date', firstDay)
-    .lte('payment_date', lastDay)
+  // Ingresos del mes — usar función que ignora RLS para que todos vean el mismo total
+  const { data: incomeData } = await supabase
+    .rpc('get_monthly_income', { p_year: selectedYear, p_month: selectedMonth })
 
-  const monthlyIncome = (payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
+  const monthlyIncome = Number(incomeData ?? 0)
   const monthlyExpenses = (expenses ?? []).reduce((s, e) => s + Number(e.amount), 0)
   const balance = monthlyIncome - monthlyExpenses
 
