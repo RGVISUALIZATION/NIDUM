@@ -16,7 +16,7 @@ export default async function UnitsPage() {
   const { data: units, error: unitsErr } = await supabase
     .from('units')
     .select('*')
-    .order('unit_number')
+    .order('floor').order('unit_number')
 
   if (unitsErr) {
     console.error('Error al cargar departamentos:', unitsErr)
