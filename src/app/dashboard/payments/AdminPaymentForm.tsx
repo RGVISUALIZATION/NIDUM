@@ -37,10 +37,13 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
     setError('')
 
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setError('Usuario no autenticado.'); setLoading(false); return }
+    
     let receipt_url: string | null = null
 
     if (file) {
-      const path = `admin/${Date.now()}_${file.name.replace(/\s+/g, '_')}`
+      const ext = file.name.split('.').pop()
+      const path = `${user.id}/${Date.now()}.${ext}`
       const { error: upErr } = await supabase.storage.from('payment-receipts').upload(path, file)
       if (upErr) { setError('Error al subir comprobante.'); setLoading(false); return }
       const { data: { publicUrl } } = supabase.storage.from('payment-receipts').getPublicUrl(path)
@@ -56,8 +59,8 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
       notes: notes.trim() || null,
       receipt_url,
       status: 'verified',
-      submitted_by: user?.id,
-      verified_by: user?.id,
+      submitted_by: user.id,
+      verified_by: user.id,
       verified_at: new Date().toISOString(),
     })
 
