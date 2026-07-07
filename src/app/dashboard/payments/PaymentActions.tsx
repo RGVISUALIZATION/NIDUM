@@ -1,202 +1,267 @@
 'use client'
 
 import { useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Pencil, Trash2, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { formatMXN } from '@/lib/utils'
+import { Pencil, Trash2, X, Save, AlertTriangle } from 'lucide-react'
 
-interface Payment {
-  id: string
-  amount: number
-  payment_date: string
-  reference: string | null
-  notes: string | null
-  unit_number: string
+interface Props {
+  payment: {
+    id: string
+    unit_id: string
+    amount: number
+    payment_date: string
+    reference: string | null
+    notes: string | null
+    status: string
+    receipt_url: string | null
+    units?: { unit_number: string } | null
+  }
 }
 
-export default function PaymentActions({ payment, onUpdate }: { payment: Payment; onUpdate: () => void }) {
-  const [showEdit, setShowEdit] = useState(false)
-  const [showDelete, setShowDelete] = useState(false)
+export default function PaymentActions({ payment }: Props) {
+  const supabase = createClient()
+  const router = useRouter()
+
+  const [editing, setEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const [amount, setAmount] = useState(payment.amount.toString())
+  // Edit fields
+  const [amount, setAmount] = useState(String(payment.amount))
   const [paymentDate, setPaymentDate] = useState(payment.payment_date)
-  const [reference, setReference] = useState(payment.reference || '')
-  const [notes, setNotes] = useState(payment.notes || '')
-
-  const supabase = createClientComponentClient()
-
-  async function handleEdit() {
-    setLoading(true)
-    setError('')
-    const parsed = parseFloat(amount)
-    if (isNaN(parsed) || parsed <= 0) {
-      setError('Monto inválido')
-      setLoading(false)
-      return
-    }
-    const { error: err } = await supabase.rpc('admin_edit_payment', {
-      p_payment_id: payment.id,
-      p_amount: parsed,
-      p_payment_date: paymentDate,
-      p_reference: reference || null,
-      p_notes: notes || null,
-    })
-    setLoading(false)
-    if (err) {
-      setError(err.message)
-    } else {
-      setShowEdit(false)
-      onUpdate()
-    }
-  }
+  const [reference, setReference] = useState(payment.reference ?? '')
+  const [notes, setNotes] = useState(payment.notes ?? '')
 
   async function handleDelete() {
     setLoading(true)
     setError('')
-    const { error: err } = await supabase.rpc('admin_delete_payment', {
-      p_payment_id: payment.id,
-    })
-    setLoading(false)
-    if (err) {
-      setError(err.message)
-    } else {
-      setShowDelete(false)
-      onUpdate()
+    try {
+      // 1. If verified, set to rejected first → trigger deletes allocations & recalculates charges
+      if (payment.status === 'verified') {
+        const { error: rejectErr } = await supabase
+          .from('payments')
+          .update({ status: 'rejected' })
+          .eq('id', payment.id)
+        if (rejectErr) throw rejectErr
+      }
+
+      // 2. Delete any remaining allocations
+      await supabase
+        .from('payment_allocations')
+        .delete()
+        .eq('payment_id', payment.id)
+
+      // 3. Delete the payment
+      const { error: delErr } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', payment.id)
+      if (delErr) throw delErr
+
+      router.refresh()
+    } catch (err: any) {
+      setError(err.message || 'Error al eliminar')
+      setLoading(false)
     }
   }
 
-  return (
-    <>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => { setShowEdit(true); setError('') }}
-          className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition-colors"
-          title="Editar pago"
-        >
-          <Pencil size={15} />
-        </button>
-        <button
-          onClick={() => { setShowDelete(true); setError('') }}
-          className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-red-600 transition-colors"
-          title="Eliminar pago"
-        >
-          <Trash2 size={15} />
-        </button>
+  async function handleSave() {
+    const newAmount = parseFloat(amount)
+    if (!newAmount || newAmount <= 0) {
+      setError('Monto inválido')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const amountChanged = newAmount !== payment.amount
+
+      if (amountChanged && payment.status === 'verified') {
+        // Step 1: Set to rejected → trigger deletes allocations & recalculates charges
+        const { error: rejectErr } = await supabase
+          .from('payments')
+          .update({ status: 'rejected' })
+          .eq('id', payment.id)
+        if (rejectErr) throw rejectErr
+
+        // Step 2: Update with new data and set back to verified → trigger re-allocates
+        const { error: updateErr } = await supabase
+          .from('payments')
+          .update({
+            amount: newAmount,
+            payment_date: paymentDate,
+            reference: reference.trim() || null,
+            notes: notes.trim() || null,
+            status: 'verified',
+          })
+          .eq('id', payment.id)
+        if (updateErr) throw updateErr
+      } else {
+        // Simple update without re-allocation
+        const { error: updateErr } = await supabase
+          .from('payments')
+          .update({
+            amount: newAmount,
+            payment_date: paymentDate,
+            reference: reference.trim() || null,
+            notes: notes.trim() || null,
+          })
+          .eq('id', payment.id)
+        if (updateErr) throw updateErr
+      }
+
+      setEditing(false)
+      router.refresh()
+    } catch (err: any) {
+      setError(err.message || 'Error al guardar')
+      setLoading(false)
+    }
+  }
+
+  // Inline edit row
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2 items-end flex-wrap">
+          <div>
+            <label className="block text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-secondary)' }}>Monto</label>
+            <input
+              type="number"
+              step="0.01"
+              min="1"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="w-28 px-2 py-1.5 rounded border text-xs outline-none"
+              style={{ borderColor: 'var(--border)' }}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-secondary)' }}>Fecha</label>
+            <input
+              type="date"
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+              className="px-2 py-1.5 rounded border text-xs outline-none"
+              style={{ borderColor: 'var(--border)' }}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-secondary)' }}>Referencia</label>
+            <input
+              value={reference}
+              onChange={e => setReference(e.target.value)}
+              placeholder="—"
+              className="w-32 px-2 py-1.5 rounded border text-xs outline-none"
+              style={{ borderColor: 'var(--border)' }}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-secondary)' }}>Notas</label>
+          <input
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="—"
+            className="w-full px-2 py-1.5 rounded border text-xs outline-none"
+            style={{ borderColor: 'var(--border)' }}
+          />
+        </div>
+        {error && (
+          <p className="text-xs text-red-600">{error}</p>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white"
+            style={{ backgroundColor: 'var(--blue-action)', opacity: loading ? 0.6 : 1 }}
+          >
+            <Save size={12} />
+            {loading ? 'Guardando...' : 'Guardar'}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setError(''); setAmount(String(payment.amount)); setPaymentDate(payment.payment_date); setReference(payment.reference ?? ''); setNotes(payment.notes ?? '') }}
+            disabled={loading}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            <X size={12} />
+            Cancelar
+          </button>
+        </div>
       </div>
+    )
+  }
 
-      {/* Modal Editar */}
-      {showEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold" style={{ color: 'var(--navy, #0F2240)' }}>
-                Editar pago — Depto {payment.unit_number}
-              </h3>
-              <button onClick={() => setShowEdit(false)} className="p-1 rounded hover:bg-gray-100">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Monto ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Fecha de pago</label>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  onChange={e => setPaymentDate(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Referencia</label>
-                <input
-                  type="text"
-                  value={reference}
-                  onChange={e => setReference(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Opcional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Notas</label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Opcional"
-                />
-              </div>
-            </div>
-
-            {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
-
-            <div className="flex justify-end gap-2 mt-5">
-              <button
-                onClick={() => setShowEdit(false)}
-                className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleEdit}
-                disabled={loading}
-                className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
-                style={{ backgroundColor: 'var(--blue-action, #2563EB)' }}
-              >
-                {loading ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-            </div>
-          </div>
+  // Delete confirmation
+  if (confirmDelete) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+          <AlertTriangle size={13} />
+          ¿Eliminar pago de {formatMXN(payment.amount)} del Depto {payment.units?.unit_number}?
         </div>
-      )}
-
-      {/* Modal Eliminar */}
-      {showDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--navy, #0F2240)' }}>
-              Eliminar pago
-            </h3>
-            <p className="text-sm text-gray-600 mb-1">
-              ¿Eliminar el pago de <strong>${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong> del depto <strong>{payment.unit_number}</strong>?
-            </p>
-            <p className="text-sm text-gray-500 mb-4">
-              Las asignaciones a cargos se revertirán automáticamente.
-            </p>
-
-            {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowDelete(false)}
-                className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={loading}
-                className="px-4 py-2 text-sm rounded-lg text-white font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50"
-              >
-                {loading ? 'Eliminando...' : 'Sí, eliminar'}
-              </button>
-            </div>
-          </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div className="flex gap-2">
+          <button
+            onClick={handleDelete}
+            disabled={loading}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white"
+            style={{ backgroundColor: '#EF4444', opacity: loading ? 0.6 : 1 }}
+          >
+            <Trash2 size={12} />
+            {loading ? 'Eliminando...' : 'Sí, eliminar'}
+          </button>
+          <button
+            onClick={() => { setConfirmDelete(false); setError('') }}
+            disabled={loading}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            Cancelar
+          </button>
         </div>
+      </div>
+    )
+  }
+
+  // Default: action buttons
+  return (
+    <div className="flex items-center gap-1">
+      {payment.status === 'pending_review' ? null : (
+        <>
+          <button
+            onClick={() => setEditing(true)}
+            className="p-1.5 rounded-md transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            title="Editar pago"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="p-1.5 rounded-md transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            title="Eliminar pago"
+          >
+            <Trash2 size={14} />
+          </button>
+        </>
       )}
-    </>
+      {payment.receipt_url && (
+        <a
+          href={payment.receipt_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-medium ml-1"
+          style={{ color: 'var(--blue-action)' }}
+        >
+          Comprobante
+        </a>
+      )}
+    </div>
   )
 }
