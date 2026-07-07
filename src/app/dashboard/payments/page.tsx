@@ -5,6 +5,7 @@ import Badge from '@/components/Badge'
 import PaymentUpload from './PaymentUpload'
 import PaymentVerify from './PaymentVerify'
 import AdminPaymentButton from './AdminPaymentButton'
+import PaymentActions from './PaymentActions'
 
 export default async function PaymentsPage() {
   const supabase = await createClient()
@@ -69,19 +70,10 @@ export default async function PaymentsPage() {
                       />
                     </td>
                     <td className="px-5 py-3.5">
-                      {p.status === 'pending_review' && (
+                      {p.status === 'pending_review' ? (
                         <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} receiptUrl={p.receipt_url} />
-                      )}
-                      {p.receipt_url && p.status !== 'pending_review' && (
-                        <a
-                          href={p.receipt_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-medium"
-                          style={{ color: 'var(--blue-action)' }}
-                        >
-                          Ver comprobante
-                        </a>
+                      ) : (
+                        <PaymentActions payment={p} />
                       )}
                     </td>
                   </tr>
@@ -104,11 +96,13 @@ export default async function PaymentsPage() {
                     <Badge label={PAYMENT_STATUS_LABEL[p.status as keyof typeof PAYMENT_STATUS_LABEL]} colorClass={PAYMENT_STATUS_COLOR[p.status as keyof typeof PAYMENT_STATUS_COLOR]} />
                   </div>
                 </div>
-                {p.status === 'pending_review' && (
-                  <div className="mt-2">
+                <div className="mt-2">
+                  {p.status === 'pending_review' ? (
                     <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} receiptUrl={p.receipt_url} />
-                  </div>
-                )}
+                  ) : (
+                    <PaymentActions payment={p} />
+                  )}
+                </div>
               </div>
             ))}
           </div>
