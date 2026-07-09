@@ -34,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',                label: 'Inicio',         icon: LayoutDashboard },
   { href: '/dashboard/units',          label: 'Departamentos',  icon: Home,            adminOnly: true },
   { href: '/dashboard/charges',        label: 'Cargos',         icon: CreditCard,      adminOnly: true },
-  { href: '/dashboard/payments',       label: 'Pagos',          icon: Upload,          adminOnly: true },
+  { href: '/dashboard/payments',       label: 'Pagos',          icon: Upload },
   { href: '/dashboard/periods',        label: 'Periodos',       icon: Calendar,        adminOnly: true },
   { href: '/dashboard/accounting',     label: 'Contabilidad',   icon: FileSpreadsheet, visibleTo: ['accountant'] },
   { href: '/dashboard/reservations',   label: 'Áreas comunes',  icon: CalendarDays },
@@ -56,6 +56,10 @@ export default function Sidebar({ profile }: { profile: Profile }) {
   }
 
   const visibleItems = NAV_ITEMS.filter(item => {
+    // La contadora SOLO ve Contabilidad
+    if (profile.role === 'accountant') {
+      return item.visibleTo?.includes('accountant') ?? false
+    }
     if (item.visibleTo) return item.visibleTo.includes(profile.role)
     if (item.adminOnly) return isAdmin
     return true
