@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'resident'
+export type Role = 'admin' | 'resident' | 'accountant'
 export type UnitStatus = 'active' | 'inactive'
 export type ChargeStatus = 'pending' | 'partial' | 'paid' | 'cancelled'
 export type PaymentStatus = 'pending_review' | 'verified' | 'rejected'
