@@ -23,6 +23,12 @@ export default async function DashboardPage() {
     .single()
 
   if (!profile) redirect('/login')
+
+  // La contadora va directo a su espacio de Contabilidad
+  if ((profile as Profile).role === 'accountant') {
+    redirect('/dashboard/accounting')
+  }
+
   const isAdmin = (profile as Profile).role === 'admin'
 
   if (isAdmin) {
