@@ -18,9 +18,11 @@ export default async function PaymentsPage() {
   if (isAdmin) {
     const { data: payments } = await supabase
       .from('payments')
-      .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name)')
+      .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(period_year, period_month))')
       .order('created_at', { ascending: false })
       .limit(50)
+
+    const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
     return (
       <div>
@@ -40,7 +42,7 @@ export default async function PaymentsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-page)', borderBottom: `1px solid var(--border)` }}>
-                  {['Depto', 'Fecha pago', 'Monto', 'Referencia', 'Estado', 'Acciones'].map(h => (
+                  {['Depto', 'Fecha pago', 'Monto', 'Referencia', 'Periodo', 'Estado', 'Acciones'].map(h => (
                     <th key={h} className="text-left px-5 py-3 font-medium text-xs uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                   ))}
                 </tr>
@@ -62,6 +64,19 @@ export default async function PaymentsPage() {
                     </td>
                     <td className="px-5 py-3.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {p.reference ?? '—'}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {(p as any).payment_billing_periods?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(p as any).payment_billing_periods.map((pbp: any, idx: number) => (
+                            <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action)' }}>
+                              {MONTH_SHORT[pbp.billing_periods.period_month - 1]} {pbp.billing_periods.period_year}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>—</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <Badge
@@ -90,6 +105,15 @@ export default async function PaymentsPage() {
                   <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--navy)' }}>Depto {p.units?.unit_number}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{formatDate(p.payment_date)}</p>
+                    {(p as any).payment_billing_periods?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(p as any).payment_billing_periods.map((pbp: any, idx: number) => (
+                          <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action)' }}>
+                            {MONTH_SHORT[pbp.billing_periods.period_month - 1]} {pbp.billing_periods.period_year}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-sm" style={{ color: 'var(--navy)' }}>{formatMXN(p.amount)}</p>
@@ -134,6 +158,13 @@ export default async function PaymentsPage() {
         .order('due_date')
     : { data: [] }
 
+  const { data: billingPeriods } = await supabase
+    .from('billing_periods')
+    .select('id, period_year, period_month, status')
+    .in('status', ['open', 'closed'])
+    .order('period_year')
+    .order('period_month')
+
   const { data: myPayments } = residency?.unit_id
     ? await supabase
         .from('payments')
@@ -159,6 +190,7 @@ export default async function PaymentsPage() {
             unitNumber={(residency.units as any).unit_number}
             pendingCharges={pendingCharges ?? []}
             userId={user.id}
+            billingPeriods={billingPeriods ?? []}
           />
 
           <div className="mt-8">

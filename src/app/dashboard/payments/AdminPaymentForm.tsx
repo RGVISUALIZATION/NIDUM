@@ -7,11 +7,16 @@ import { X, Upload, CheckCircle, AlertCircle } from 'lucide-react'
 import { formatMXN } from '@/lib/utils'
 
 interface Unit { id: string; unit_number: string }
+interface BillingPeriod { id: string; period_year: number; period_month: number; status: string }
+
+const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
   const supabase = createClient()
   const router = useRouter()
   const [units, setUnits] = useState<Unit[]>([])
+  const [billingPeriods, setBillingPeriods] = useState<BillingPeriod[]>([])
+  const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set())
   const [unitId, setUnitId] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
@@ -24,8 +29,12 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('units').select('id, unit_number').eq('status', 'active').order('unit_number')
-      if (data) setUnits(data)
+      const [unitsRes, periodsRes] = await Promise.all([
+        supabase.from('units').select('id, unit_number').eq('status', 'active').order('unit_number'),
+        supabase.from('billing_periods').select('id, period_year, period_month, status').in('status', ['open', 'closed']).order('period_year').order('period_month'),
+      ])
+      if (unitsRes.data) setUnits(unitsRes.data)
+      if (periodsRes.data) setBillingPeriods(periodsRes.data)
     }
     load()
   }, [])
@@ -51,7 +60,7 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
     }
 
     // Crear pago directamente como verificado
-    const { error: insertErr } = await supabase.from('payments').insert({
+    const { data: newPayment, error: insertErr } = await supabase.from('payments').insert({
       unit_id: unitId,
       amount: parseFloat(amount),
       payment_date: paymentDate,
@@ -62,9 +71,18 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
       submitted_by: user.id,
       verified_by: user.id,
       verified_at: new Date().toISOString(),
-    })
+    }).select('id').single()
 
     if (insertErr) { setError(insertErr.message); setLoading(false); return }
+
+    if (newPayment && selectedPeriods.size > 0) {
+      await supabase.from('payment_billing_periods').insert(
+        Array.from(selectedPeriods).map(periodId => ({
+          payment_id: newPayment.id,
+          billing_period_id: periodId,
+        }))
+      )
+    }
 
     setSuccess(true)
     setLoading(false)
@@ -120,6 +138,36 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
               className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--border)' }} />
           </div>
         </div>
+
+        {billingPeriods.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>¿A qué mes(es) corresponde este pago?</label>
+            <div className="flex flex-wrap gap-2">
+              {billingPeriods.map(bp => {
+                const selected = selectedPeriods.has(bp.id)
+                return (
+                  <button
+                    key={bp.id}
+                    type="button"
+                    onClick={() => {
+                      const next = new Set(selectedPeriods)
+                      selected ? next.delete(bp.id) : next.add(bp.id)
+                      setSelectedPeriods(next)
+                    }}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors"
+                    style={{
+                      borderColor: selected ? 'var(--blue-action)' : 'var(--border)',
+                      backgroundColor: selected ? 'var(--blue-action)' : 'transparent',
+                      color: selected ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {MONTH_NAMES[bp.period_month - 1]} {bp.period_year}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Comprobante (imagen o PDF)</label>
