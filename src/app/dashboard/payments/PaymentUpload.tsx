@@ -5,16 +5,27 @@ import { createClient } from '@/lib/supabase/client'
 import { formatMXN, formatDate } from '@/lib/utils'
 import { Upload, CheckCircle } from 'lucide-react'
 
+interface BillingPeriod {
+  id: string
+  period_year: number
+  period_month: number
+  status: string
+}
+
 interface Props {
   unitId: string
   unitNumber: string
   pendingCharges: any[]
   userId: string
+  billingPeriods: BillingPeriod[]
 }
 
-export default function PaymentUpload({ unitId, unitNumber, pendingCharges, userId }: Props) {
+const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+export default function PaymentUpload({ unitId, unitNumber, pendingCharges, userId, billingPeriods }: Props) {
   const supabase = createClient()
   const [amount, setAmount] = useState('')
+  const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set())
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
@@ -50,7 +61,7 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
       receipt_url = publicUrl
     }
 
-    const { error: insertErr } = await supabase.from('payments').insert({
+    const { data: newPayment, error: insertErr } = await supabase.from('payments').insert({
       unit_id: unitId,
       amount: parseFloat(amount),
       payment_date: paymentDate,
@@ -59,12 +70,21 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
       receipt_url,
       status: 'pending_review',
       submitted_by: userId,
-    })
+    }).select('id').single()
 
     if (insertErr) {
       setError(insertErr.message)
       setLoading(false)
       return
+    }
+
+    if (newPayment && selectedPeriods.size > 0) {
+      await supabase.from('payment_billing_periods').insert(
+        Array.from(selectedPeriods).map(periodId => ({
+          payment_id: newPayment.id,
+          billing_period_id: periodId,
+        }))
+      )
     }
 
     setSuccess(true)
@@ -80,7 +100,7 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
           La administración revisará tu comprobante y actualizará tu estado de cuenta en breve.
         </p>
         <button
-          onClick={() => { setSuccess(false); setAmount(''); setReference(''); setNotes(''); setFile(null) }}
+          onClick={() => { setSuccess(false); setAmount(''); setReference(''); setNotes(''); setFile(null); setSelectedPeriods(new Set()) }}
           className="text-sm font-medium mt-2"
           style={{ color: 'var(--blue-action)' }}
         >
@@ -114,6 +134,36 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {billingPeriods.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>¿A qué mes(es) corresponde este pago?</label>
+            <div className="flex flex-wrap gap-2">
+              {billingPeriods.map(bp => {
+                const selected = selectedPeriods.has(bp.id)
+                return (
+                  <button
+                    key={bp.id}
+                    type="button"
+                    onClick={() => {
+                      const next = new Set(selectedPeriods)
+                      selected ? next.delete(bp.id) : next.add(bp.id)
+                      setSelectedPeriods(next)
+                    }}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors"
+                    style={{
+                      borderColor: selected ? 'var(--blue-action)' : 'var(--border)',
+                      backgroundColor: selected ? 'var(--blue-action)' : 'transparent',
+                      color: selected ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {MONTH_NAMES[bp.period_month - 1]} {bp.period_year}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Monto pagado *</label>
