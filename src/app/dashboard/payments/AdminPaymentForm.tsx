@@ -31,7 +31,7 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
     async function load() {
       const [unitsRes, periodsRes] = await Promise.all([
         supabase.from('units').select('id, unit_number').eq('status', 'active').order('unit_number'),
-        supabase.from('billing_periods').select('id, period_year, period_month, status').in('status', ['open', 'closed']).order('period_year').order('period_month'),
+        supabase.from('billing_periods').select('id, period_year, period_month, status').order('period_year').order('period_month'),
       ])
       if (unitsRes.data) setUnits(unitsRes.data)
       if (periodsRes.data) setBillingPeriods(periodsRes.data)

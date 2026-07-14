@@ -161,7 +161,6 @@ export default async function PaymentsPage() {
   const { data: billingPeriods } = await supabase
     .from('billing_periods')
     .select('id, period_year, period_month, status')
-    .in('status', ['open', 'closed'])
     .order('period_year')
     .order('period_month')
 
