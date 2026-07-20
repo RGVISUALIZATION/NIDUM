@@ -102,6 +102,16 @@ export interface ChargeWithUnit extends Charge {
   fee_concepts: Pick<FeeConcept, 'name' | 'code'>
 }
 
+export interface PaymentInvoice {
+  id: string
+  payment_id: string
+  file_type: 'pdf' | 'xml'
+  file_path: string
+  file_name: string
+  uploaded_by: string | null
+  created_at: string
+}
+
 export interface PaymentWithUnit extends Payment {
   units: Pick<Unit, 'unit_number' | 'floor'>
   profiles: Pick<Profile, 'full_name'>

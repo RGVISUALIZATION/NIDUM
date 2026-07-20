@@ -6,6 +6,7 @@ import PaymentUpload from './PaymentUpload'
 import PaymentVerify from './PaymentVerify'
 import AdminPaymentButton from './AdminPaymentButton'
 import PaymentActions from './PaymentActions'
+import InvoiceDownload from './InvoiceDownload'
 
 export default async function PaymentsPage() {
   const supabase = await createClient()
@@ -173,6 +174,20 @@ export default async function PaymentsPage() {
         .limit(10)
     : { data: [] }
 
+  const paymentIds = myPayments?.map(p => p.id) ?? []
+  const { data: invoiceRows } = paymentIds.length > 0
+    ? await supabase
+        .from('payment_invoices')
+        .select('payment_id, file_type, file_path')
+        .in('payment_id', paymentIds)
+    : { data: [] }
+
+  const invoiceMap: Record<string, { file_type: string; file_path: string }[]> = {}
+  invoiceRows?.forEach(inv => {
+    if (!invoiceMap[inv.payment_id]) invoiceMap[inv.payment_id] = []
+    invoiceMap[inv.payment_id].push({ file_type: inv.file_type, file_path: inv.file_path })
+  })
+
   return (
     <div className="max-w-xl">
       <div className="mb-8">
@@ -206,6 +221,7 @@ export default async function PaymentsPage() {
                       <div className="text-right">
                         <p className="text-sm font-semibold" style={{ color: 'var(--navy)' }}>{formatMXN(p.amount)}</p>
                         <Badge label={PAYMENT_STATUS_LABEL[p.status as keyof typeof PAYMENT_STATUS_LABEL]} colorClass={PAYMENT_STATUS_COLOR[p.status as keyof typeof PAYMENT_STATUS_COLOR]} />
+                        {invoiceMap[p.id] && <InvoiceDownload invoices={invoiceMap[p.id]} />}
                       </div>
                     </div>
                   ))}

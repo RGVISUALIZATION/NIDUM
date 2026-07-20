@@ -14,6 +14,9 @@ import {
   Filter,
   X,
   Loader2,
+  Upload,
+  FileCheck,
+  Trash2,
 } from 'lucide-react'
 
 /* ───────── types ───────── */
@@ -111,6 +114,10 @@ export default function AccountingClient() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
+  // invoices
+  const [invoices, setInvoices] = useState<Record<string, { pdf?: string; xml?: string }>>({})
+  const [uploadingPaymentId, setUploadingPaymentId] = useState<string | null>(null)
+
   // ui
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -153,7 +160,26 @@ export default function AccountingClient() {
       }
 
       const { data: payData } = await payQ
-      if (payData) setPayments(payData as unknown as Payment[])
+      if (payData) {
+        setPayments(payData as unknown as Payment[])
+        const payIds = payData.map((p: any) => p.id)
+        if (payIds.length > 0) {
+          const { data: invData } = await supabase
+            .from('payment_invoices')
+            .select('payment_id, file_type, file_path')
+            .in('payment_id', payIds)
+          if (invData) {
+            const map: Record<string, { pdf?: string; xml?: string }> = {}
+            invData.forEach((inv: any) => {
+              if (!map[inv.payment_id]) map[inv.payment_id] = {}
+              map[inv.payment_id][inv.file_type as 'pdf' | 'xml'] = inv.file_path
+            })
+            setInvoices(map)
+          }
+        } else {
+          setInvoices({})
+        }
+      }
 
       // Charges for this billing period
       const matchingPeriod = periods.find(
@@ -189,7 +215,26 @@ export default function AccountingClient() {
       }
 
       const { data: payData } = await payQ
-      if (payData) setPayments(payData as unknown as Payment[])
+      if (payData) {
+        setPayments(payData as unknown as Payment[])
+        const payIds = payData.map((p: any) => p.id)
+        if (payIds.length > 0) {
+          const { data: invData } = await supabase
+            .from('payment_invoices')
+            .select('payment_id, file_type, file_path')
+            .in('payment_id', payIds)
+          if (invData) {
+            const map: Record<string, { pdf?: string; xml?: string }> = {}
+            invData.forEach((inv: any) => {
+              if (!map[inv.payment_id]) map[inv.payment_id] = {}
+              map[inv.payment_id][inv.file_type as 'pdf' | 'xml'] = inv.file_path
+            })
+            setInvoices(map)
+          }
+        } else {
+          setInvoices({})
+        }
+      }
 
       const { data: chargeData } = await supabase
         .from('charges')
@@ -233,6 +278,52 @@ export default function AccountingClient() {
     .reduce((sum, c) => sum + (Number(c.amount) - Number(c.paid_amount)), 0)
 
   const totalCargos = charges.reduce((sum, c) => sum + Number(c.amount), 0)
+
+  /* ── invoice upload / delete ── */
+  async function handleInvoiceUpload(paymentId: string, unitId: string, file: File) {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    if (ext !== 'pdf' && ext !== 'xml') return
+    setUploadingPaymentId(paymentId)
+
+    const path = `${unitId}/${paymentId}/factura.${ext}`
+    const { error: upErr } = await supabase.storage.from('invoices').upload(path, file, { upsert: true })
+    if (upErr) { setUploadingPaymentId(null); return }
+
+    const { data: { user } } = await supabase.auth.getUser()
+
+    await supabase.from('payment_invoices').upsert({
+      payment_id: paymentId,
+      file_type: ext,
+      file_path: path,
+      file_name: file.name,
+      uploaded_by: user?.id ?? null,
+    }, { onConflict: 'payment_id,file_type' })
+
+    setInvoices(prev => ({
+      ...prev,
+      [paymentId]: { ...prev[paymentId], [ext]: path },
+    }))
+    setUploadingPaymentId(null)
+  }
+
+  async function handleInvoiceDelete(paymentId: string, fileType: 'pdf' | 'xml') {
+    const path = invoices[paymentId]?.[fileType]
+    if (!path) return
+
+    await supabase.storage.from('invoices').remove([path])
+    await supabase.from('payment_invoices').delete().eq('payment_id', paymentId).eq('file_type', fileType)
+
+    setInvoices(prev => {
+      const copy = { ...prev }
+      if (copy[paymentId]) {
+        const entry = { ...copy[paymentId] }
+        delete entry[fileType]
+        if (Object.keys(entry).length === 0) delete copy[paymentId]
+        else copy[paymentId] = entry
+      }
+      return copy
+    })
+  }
 
   /* ── export CSV ── */
   async function exportCSV() {
@@ -542,6 +633,7 @@ export default function AccountingClient() {
                   <th className="text-left px-4 py-3 font-semibold hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>Referencia</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Estado</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Comprobante</th>
+                  <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Factura</th>
                 </tr>
               </thead>
               <tbody>
@@ -601,6 +693,38 @@ export default function AccountingClient() {
                           </a>
                         ) : (
                           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {uploadingPaymentId === p.id ? (
+                          <Loader2 size={14} className="animate-spin mx-auto" style={{ color: 'var(--text-secondary)' }} />
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5">
+                            {invoices[p.id]?.pdf && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: '#dc262615', color: '#dc2626' }}>
+                                <FileCheck size={10} />PDF
+                                <button onClick={() => handleInvoiceDelete(p.id, 'pdf')} className="ml-0.5 hover:opacity-70"><Trash2 size={9} /></button>
+                              </span>
+                            )}
+                            {invoices[p.id]?.xml && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: '#16a34a15', color: '#16a34a' }}>
+                                <FileCheck size={10} />XML
+                                <button onClick={() => handleInvoiceDelete(p.id, 'xml')} className="ml-0.5 hover:opacity-70"><Trash2 size={9} /></button>
+                              </span>
+                            )}
+                            <label className="cursor-pointer inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded transition-all"
+                              style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action)' }}>
+                              <Upload size={10} />Subir
+                              <input type="file" accept=".pdf,.xml" className="hidden"
+                                onChange={e => {
+                                  const f = e.target.files?.[0]
+                                  if (f) handleInvoiceUpload(p.id, p.unit_id, f)
+                                  e.target.value = ''
+                                }} />
+                            </label>
+                          </div>
                         )}
                       </td>
                     </tr>
