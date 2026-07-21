@@ -17,11 +17,18 @@ export default async function PaymentsPage() {
   const isAdmin = profile?.role === 'admin'
 
   if (isAdmin) {
-    const { data: payments } = await supabase
-      .from('payments')
-      .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(period_year, period_month))')
-      .order('created_at', { ascending: false })
-      .limit(50)
+    const [{ data: payments }, { data: allBillingPeriods }] = await Promise.all([
+      supabase
+        .from('payments')
+        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(id, period_year, period_month))')
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('billing_periods')
+        .select('id, period_year, period_month')
+        .order('period_year')
+        .order('period_month'),
+    ])
 
     const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
@@ -89,7 +96,7 @@ export default async function PaymentsPage() {
                       {p.status === 'pending_review' ? (
                         <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} receiptUrl={p.receipt_url} />
                       ) : (
-                        <PaymentActions payment={p} />
+                        <PaymentActions payment={p} billingPeriods={allBillingPeriods ?? []} />
                       )}
                     </td>
                   </tr>
@@ -125,7 +132,7 @@ export default async function PaymentsPage() {
                   {p.status === 'pending_review' ? (
                     <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} receiptUrl={p.receipt_url} />
                   ) : (
-                    <PaymentActions payment={p} />
+                    <PaymentActions payment={p} billingPeriods={allBillingPeriods ?? []} />
                   )}
                 </div>
               </div>

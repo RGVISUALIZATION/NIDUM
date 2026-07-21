@@ -6,6 +6,12 @@ import { createClient } from '@/lib/supabase/client'
 import { formatMXN } from '@/lib/utils'
 import { Pencil, Trash2, X, Save, AlertTriangle } from 'lucide-react'
 
+interface BillingPeriod {
+  id: string
+  period_year: number
+  period_month: number
+}
+
 interface Props {
   payment: {
     id: string
@@ -17,10 +23,14 @@ interface Props {
     status: string
     receipt_url: string | null
     units?: { unit_number: string } | null
+    payment_billing_periods?: { billing_periods: { id: string; period_year: number; period_month: number } }[]
   }
+  billingPeriods?: BillingPeriod[]
 }
 
-export default function PaymentActions({ payment }: Props) {
+const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+
+export default function PaymentActions({ payment, billingPeriods = [] }: Props) {
   const supabase = createClient()
   const router = useRouter()
 
@@ -34,6 +44,20 @@ export default function PaymentActions({ payment }: Props) {
   const [paymentDate, setPaymentDate] = useState(payment.payment_date)
   const [reference, setReference] = useState(payment.reference ?? '')
   const [notes, setNotes] = useState(payment.notes ?? '')
+
+  const initialPeriodIds = new Set(
+    (payment.payment_billing_periods ?? []).map(pbp => pbp.billing_periods.id)
+  )
+  const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(initialPeriodIds)
+
+  function togglePeriod(id: string) {
+    setSelectedPeriods(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function handleDelete() {
     setLoading(true)
@@ -113,6 +137,28 @@ export default function PaymentActions({ payment }: Props) {
         if (updateErr) throw updateErr
       }
 
+      const oldIds = new Set(initialPeriodIds)
+      const newIds = new Set(selectedPeriods)
+      const periodsChanged = oldIds.size !== newIds.size || [...oldIds].some(id => !newIds.has(id))
+
+      if (periodsChanged) {
+        await supabase
+          .from('payment_billing_periods')
+          .delete()
+          .eq('payment_id', payment.id)
+
+        if (newIds.size > 0) {
+          const rows = [...newIds].map(bpId => ({
+            payment_id: payment.id,
+            billing_period_id: bpId,
+          }))
+          const { error: insertErr } = await supabase
+            .from('payment_billing_periods')
+            .insert(rows)
+          if (insertErr) throw insertErr
+        }
+      }
+
       setEditing(false)
       router.refresh()
     } catch (err: any) {
@@ -169,6 +215,31 @@ export default function PaymentActions({ payment }: Props) {
             style={{ borderColor: 'var(--border)' }}
           />
         </div>
+        {billingPeriods.length > 0 && (
+          <div>
+            <label className="block text-[10px] font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Periodo(s)</label>
+            <div className="flex flex-wrap gap-1.5">
+              {billingPeriods.map(bp => {
+                const isSelected = selectedPeriods.has(bp.id)
+                return (
+                  <button
+                    key={bp.id}
+                    type="button"
+                    onClick={() => togglePeriod(bp.id)}
+                    className="px-2 py-1 rounded-full text-[10px] font-medium border transition-all"
+                    style={{
+                      borderColor: isSelected ? 'var(--blue-action)' : 'var(--border)',
+                      backgroundColor: isSelected ? 'rgba(37,99,235,0.1)' : 'transparent',
+                      color: isSelected ? 'var(--blue-action)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {MONTH_SHORT[bp.period_month - 1]} {bp.period_year}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
         {error && (
           <p className="text-xs text-red-600">{error}</p>
         )}
@@ -183,7 +254,7 @@ export default function PaymentActions({ payment }: Props) {
             {loading ? 'Guardando...' : 'Guardar'}
           </button>
           <button
-            onClick={() => { setEditing(false); setError(''); setAmount(String(payment.amount)); setPaymentDate(payment.payment_date); setReference(payment.reference ?? ''); setNotes(payment.notes ?? '') }}
+            onClick={() => { setEditing(false); setError(''); setAmount(String(payment.amount)); setPaymentDate(payment.payment_date); setReference(payment.reference ?? ''); setNotes(payment.notes ?? ''); setSelectedPeriods(new Set(initialPeriodIds)) }}
             disabled={loading}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
             style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}

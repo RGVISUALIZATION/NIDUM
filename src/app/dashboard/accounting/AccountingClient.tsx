@@ -40,6 +40,7 @@ interface Payment {
   notes: string | null
   created_at: string
   units: { unit_number: string }
+  payment_billing_periods?: { billing_periods: { period_year: number; period_month: number } }[]
 }
 
 interface Charge {
@@ -150,7 +151,7 @@ export default function AccountingClient() {
 
       let payQ = supabase
         .from('payments')
-        .select('*, units(unit_number)')
+        .select('*, units(unit_number), payment_billing_periods(billing_periods(period_year, period_month))')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate)
         .order('payment_date', { ascending: false })
@@ -206,7 +207,7 @@ export default function AccountingClient() {
 
       let payQ = supabase
         .from('payments')
-        .select('*, units(unit_number)')
+        .select('*, units(unit_number), payment_billing_periods(billing_periods(period_year, period_month))')
         .eq('unit_id', selectedUnit)
         .order('payment_date', { ascending: false })
 
@@ -631,6 +632,7 @@ export default function AccountingClient() {
                   <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Fecha</th>
                   <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Monto</th>
                   <th className="text-left px-4 py-3 font-semibold hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>Referencia</th>
+                  <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Periodo</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Estado</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Comprobante</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--text-secondary)' }}>Factura</th>
@@ -667,6 +669,19 @@ export default function AccountingClient() {
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>
                         {p.reference || '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.payment_billing_periods && p.payment_billing_periods.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {p.payment_billing_periods.map((pbp, idx) => (
+                              <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action, #2563eb)' }}>
+                                {MONTHS[pbp.billing_periods.period_month - 1]?.slice(0, 3)} {pbp.billing_periods.period_year}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span
