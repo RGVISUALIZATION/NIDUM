@@ -96,6 +96,13 @@ function formatDate(d: string) {
   })
 }
 
+function formatPeriods(p: Payment): string {
+  if (!p.payment_billing_periods || p.payment_billing_periods.length === 0) return ''
+  return p.payment_billing_periods
+    .map(pbp => `${MONTHS[pbp.billing_periods.period_month - 1]?.slice(0, 3)} ${pbp.billing_periods.period_year}`)
+    .join(', ')
+}
+
 /* ───────── component ───────── */
 
 export default function AccountingClient() {
@@ -329,7 +336,7 @@ export default function AccountingClient() {
   /* ── export CSV ── */
   async function exportCSV() {
     setExporting(true)
-    const header = 'Unidad,Propietario,Teléfono,Email,Fecha Pago,Monto,Referencia,Estado,Concepto\n'
+    const header = 'Unidad,Propietario,Teléfono,Email,Fecha Pago,Monto,Referencia,Periodo,Estado,Concepto\n'
     const rows = filteredPayments.map(p => {
       const owner = ownerMap.get(p.unit_id)
       // Try to find matching concept from charges
@@ -343,6 +350,7 @@ export default function AccountingClient() {
         p.payment_date,
         p.amount,
         p.reference || '',
+        formatPeriods(p),
         STATUS_LABELS[p.status] || p.status,
         concept,
       ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
@@ -370,6 +378,7 @@ export default function AccountingClient() {
 
     const rowsHtml = filteredPayments.map(p => {
       const owner = ownerMap.get(p.unit_id)
+      const periodLabel = formatPeriods(p)
       return `<tr>
         <td>${p.units?.unit_number || ''}</td>
         <td>${owner?.owner_name || ''}</td>
@@ -378,6 +387,7 @@ export default function AccountingClient() {
         <td>${formatDate(p.payment_date)}</td>
         <td style="text-align:right">${formatCurrency(Number(p.amount))}</td>
         <td>${p.reference || ''}</td>
+        <td>${periodLabel}</td>
         <td>${STATUS_LABELS[p.status] || p.status}</td>
       </tr>`
     }).join('')
@@ -406,7 +416,7 @@ export default function AccountingClient() {
         <div><div class="label">Pagos</div><div class="value">${filteredPayments.length}</div></div>
       </div>
       <table>
-        <thead><tr><th>Unidad</th><th>Propietario</th><th>Teléfono</th><th>Email</th><th>Fecha</th><th>Monto</th><th>Referencia</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Unidad</th><th>Propietario</th><th>Teléfono</th><th>Email</th><th>Fecha</th><th>Monto</th><th>Referencia</th><th>Periodo</th><th>Estado</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     </body></html>`
