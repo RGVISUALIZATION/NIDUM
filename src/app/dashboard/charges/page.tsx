@@ -46,6 +46,12 @@ export default async function ChargesPage({ searchParams }: { searchParams: Prom
     : { data: [] }
   const unitsMap = new Map((units ?? []).map(u => [u.id, u]))
 
+  const sortedCharges = (charges ?? []).sort((a, b) => {
+    const unitA = unitsMap.get(a.unit_id)?.unit_number ?? 0
+    const unitB = unitsMap.get(b.unit_id)?.unit_number ?? 0
+    return unitA - unitB
+  })
+
   // Totales
   const totalPending = (charges ?? []).filter(c => ['pending', 'partial'].includes(c.status))
     .reduce((s, c) => s + (Number(c.amount) - Number(c.paid_amount)), 0)
@@ -136,7 +142,7 @@ export default async function ChargesPage({ searchParams }: { searchParams: Prom
                   </tr>
                 </thead>
                 <tbody>
-                  {charges.map((c, i) => {
+                  {sortedCharges.map((c, i) => {
                     const concept = conceptMap.get(c.concept_id)
                     const unit = unitsMap.get(c.unit_id)
                     return (
@@ -172,7 +178,7 @@ export default async function ChargesPage({ searchParams }: { searchParams: Prom
 
             {/* Móvil */}
             <div className="sm:hidden divide-y" style={{ borderColor: 'var(--border)' }}>
-              {charges.map(c => {
+              {sortedCharges.map(c => {
                 const concept = conceptMap.get(c.concept_id)
                 const unit = unitsMap.get(c.unit_id)
                 return (
