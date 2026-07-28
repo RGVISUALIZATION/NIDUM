@@ -30,6 +30,12 @@ export default async function PaymentsPage() {
         .order('period_month'),
     ])
 
+    const sortedPayments = (payments ?? []).sort((a, b) => {
+      const unitA = a.units?.unit_number ?? 0
+      const unitB = b.units?.unit_number ?? 0
+      return unitA - unitB
+    })
+
     const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
     return (
@@ -56,7 +62,7 @@ export default async function PaymentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {payments?.map((p, i) => (
+                {sortedPayments.map((p, i) => (
                   <tr
                     key={p.id}
                     style={{ borderTop: i > 0 ? `1px solid var(--border)` : undefined }}
@@ -107,7 +113,7 @@ export default async function PaymentsPage() {
 
           {/* Móvil */}
           <div className="sm:hidden divide-y" style={{ borderColor: 'var(--border)' }}>
-            {payments?.map(p => (
+            {sortedPayments.map(p => (
               <div key={p.id} className="px-4 py-4">
                 <div className="flex justify-between items-start">
                   <div>
