@@ -20,9 +20,11 @@ import {
   ChevronRight,
   Menu,
   X,
+  KeyRound,
 } from 'lucide-react'
 import { Profile } from '@/lib/types'
 import { useState } from 'react'
+import ChangePasswordModal from './ChangePasswordModal'
 
 interface NavItem {
   href: string
@@ -52,6 +54,7 @@ export default function Sidebar({ profile }: { profile: Profile }) {
   const supabase = createClient()
   const isAdmin = profile.role === 'admin'
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -126,6 +129,17 @@ export default function Sidebar({ profile }: { profile: Profile }) {
           </div>
         </div>
         <button
+          onClick={() => {
+            setPasswordModalOpen(true)
+            setMobileOpen(false)
+          }}
+          className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm transition-all"
+          style={{ color: 'rgba(255,255,255,0.5)' }}
+        >
+          <KeyRound size={15} strokeWidth={1.5} />
+          Cambiar contraseña
+        </button>
+        <button
           onClick={handleLogout}
           className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm transition-all"
           style={{ color: 'rgba(255,255,255,0.5)' }}
@@ -173,6 +187,11 @@ export default function Sidebar({ profile }: { profile: Profile }) {
           </aside>
         </div>
       )}
+
+      <ChangePasswordModal
+        open={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+      />
     </>
   )
 }
