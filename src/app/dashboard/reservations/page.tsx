@@ -31,7 +31,7 @@ export default async function ReservationsPage() {
       *,
       common_areas(name, slug),
       units(unit_number),
-      profiles(full_name)
+      profiles!profile_id(full_name)
     `)
     .in('status', ['pending', 'confirmed'])
     .gte('reservation_date', today)
