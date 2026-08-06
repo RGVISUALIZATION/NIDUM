@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatMXN } from '@/lib/utils'
@@ -38,6 +38,21 @@ export default function PaymentActions({ payment, billingPeriods = [] }: Props) 
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [hasInvoices, setHasInvoices] = useState(false)
+  const [checkingInvoices, setCheckingInvoices] = useState(true)
+
+  useEffect(() => {
+    async function checkInvoices() {
+      const { count } = await supabase
+        .from('payment_invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('payment_id', payment.id)
+      setHasInvoices((count ?? 0) > 0)
+      setCheckingInvoices(false)
+    }
+    checkInvoices()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payment.id])
 
   // Edit fields
   const [amount, setAmount] = useState(String(payment.amount))
@@ -169,6 +184,23 @@ export default function PaymentActions({ payment, billingPeriods = [] }: Props) 
 
   // Inline edit row
   if (editing) {
+    if (hasInvoices) {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
+            <AlertTriangle size={13} />
+            Este pago tiene factura vinculada. Elimina primero la factura desde Contabilidad antes de modificar o eliminar el pago.
+          </div>
+          <button
+            onClick={() => { setEditing(false); setError('') }}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            Entendido
+          </button>
+        </div>
+      )
+    }
     return (
       <div className="flex flex-col gap-2">
         <div className="flex gap-2 items-end flex-wrap">
@@ -271,30 +303,48 @@ export default function PaymentActions({ payment, billingPeriods = [] }: Props) 
   if (confirmDelete) {
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-          <AlertTriangle size={13} />
-          ¿Eliminar pago de {formatMXN(payment.amount)} del Depto {payment.units?.unit_number}?
-        </div>
-        {error && <p className="text-xs text-red-600">{error}</p>}
-        <div className="flex gap-2">
-          <button
-            onClick={handleDelete}
-            disabled={loading}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white"
-            style={{ backgroundColor: '#EF4444', opacity: loading ? 0.6 : 1 }}
-          >
-            <Trash2 size={12} />
-            {loading ? 'Eliminando...' : 'Sí, eliminar'}
-          </button>
-          <button
-            onClick={() => { setConfirmDelete(false); setError('') }}
-            disabled={loading}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-          >
-            Cancelar
-          </button>
-        </div>
+        {hasInvoices ? (
+          <>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
+              <AlertTriangle size={13} />
+              Este pago tiene factura vinculada. Elimina primero la factura desde Contabilidad antes de modificar o eliminar el pago.
+            </div>
+            <button
+              onClick={() => { setConfirmDelete(false); setError('') }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            >
+              Entendido
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+              <AlertTriangle size={13} />
+              ¿Eliminar pago de {formatMXN(payment.amount)} del Depto {payment.units?.unit_number}?
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={loading}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white"
+                style={{ backgroundColor: '#EF4444', opacity: loading ? 0.6 : 1 }}
+              >
+                <Trash2 size={12} />
+                {loading ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+              <button
+                onClick={() => { setConfirmDelete(false); setError('') }}
+                disabled={loading}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
       </div>
     )
   }
@@ -306,17 +356,19 @@ export default function PaymentActions({ payment, billingPeriods = [] }: Props) 
         <>
           <button
             onClick={() => setEditing(true)}
+            disabled={checkingInvoices}
             className="p-1.5 rounded-md transition-colors"
-            style={{ color: 'var(--text-secondary)' }}
-            title="Editar pago"
+            style={{ color: hasInvoices ? '#f59e0b' : 'var(--text-secondary)', opacity: checkingInvoices ? 0.3 : 1 }}
+            title={hasInvoices ? 'Pago con factura — clic para detalles' : 'Editar pago'}
           >
             <Pencil size={14} />
           </button>
           <button
             onClick={() => setConfirmDelete(true)}
+            disabled={checkingInvoices}
             className="p-1.5 rounded-md transition-colors"
-            style={{ color: 'var(--text-secondary)' }}
-            title="Eliminar pago"
+            style={{ color: hasInvoices ? '#f59e0b' : 'var(--text-secondary)', opacity: checkingInvoices ? 0.3 : 1 }}
+            title={hasInvoices ? 'Pago con factura — clic para detalles' : 'Eliminar pago'}
           >
             <Trash2 size={14} />
           </button>

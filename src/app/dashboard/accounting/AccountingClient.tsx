@@ -161,7 +161,7 @@ export default function AccountingClient() {
         .select('*, units(unit_number), payment_billing_periods(billing_periods(period_year, period_month))')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate)
-        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (statusFilter !== 'all') {
         payQ = payQ.eq('status', statusFilter)
@@ -216,7 +216,7 @@ export default function AccountingClient() {
         .from('payments')
         .select('*, units(unit_number), payment_billing_periods(billing_periods(period_year, period_month))')
         .eq('unit_id', selectedUnit)
-        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (statusFilter !== 'all') {
         payQ = payQ.eq('status', statusFilter)
@@ -331,6 +331,13 @@ export default function AccountingClient() {
       }
       return copy
     })
+  }
+
+  async function handleInvoiceDownload(filePath: string) {
+    const { data } = await supabase.storage.from('invoices').createSignedUrl(filePath, 60)
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, '_blank')
+    }
   }
 
   /* ── export CSV ── */
@@ -728,15 +735,19 @@ export default function AccountingClient() {
                             {invoices[p.id]?.pdf && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded"
                                 style={{ backgroundColor: '#dc262615', color: '#dc2626' }}>
-                                <FileCheck size={10} />PDF
-                                <button onClick={() => handleInvoiceDelete(p.id, 'pdf')} className="ml-0.5 hover:opacity-70"><Trash2 size={9} /></button>
+                                <button onClick={() => handleInvoiceDownload(invoices[p.id]!.pdf!)} className="inline-flex items-center gap-0.5 hover:opacity-70" title="Descargar PDF">
+                                  <FileCheck size={10} />PDF
+                                </button>
+                                <button onClick={() => handleInvoiceDelete(p.id, 'pdf')} className="ml-0.5 hover:opacity-70" title="Eliminar PDF"><Trash2 size={9} /></button>
                               </span>
                             )}
                             {invoices[p.id]?.xml && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded"
                                 style={{ backgroundColor: '#16a34a15', color: '#16a34a' }}>
-                                <FileCheck size={10} />XML
-                                <button onClick={() => handleInvoiceDelete(p.id, 'xml')} className="ml-0.5 hover:opacity-70"><Trash2 size={9} /></button>
+                                <button onClick={() => handleInvoiceDownload(invoices[p.id]!.xml!)} className="inline-flex items-center gap-0.5 hover:opacity-70" title="Descargar XML">
+                                  <FileCheck size={10} />XML
+                                </button>
+                                <button onClick={() => handleInvoiceDelete(p.id, 'xml')} className="ml-0.5 hover:opacity-70" title="Eliminar XML"><Trash2 size={9} /></button>
                               </span>
                             )}
                             <label className="cursor-pointer inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded transition-all"
