@@ -7,8 +7,9 @@ import PaymentVerify from './PaymentVerify'
 import AdminPaymentButton from './AdminPaymentButton'
 import PaymentActions from './PaymentActions'
 import InvoiceDownload from './InvoiceDownload'
+import PeriodFilterSelect from './PeriodFilterSelect'
 
-export default async function PaymentsPage() {
+export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -17,18 +18,37 @@ export default async function PaymentsPage() {
   const isAdmin = profile?.role === 'admin'
 
   if (isAdmin) {
-    const [{ data: payments }, { data: allBillingPeriods }] = await Promise.all([
-      supabase
+    const params = await searchParams
+    const selectedPeriod = params.period ?? ''
+
+    const { data: allBillingPeriods } = await supabase
+      .from('billing_periods')
+      .select('id, period_year, period_month, status')
+      .order('period_year')
+      .order('period_month')
+
+    let payments: any[] | null = null
+    if (selectedPeriod && selectedPeriod !== 'all') {
+      const { data } = await supabase
+        .from('payments')
+        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods!inner(billing_period_id, billing_periods(id, period_year, period_month))')
+        .eq('payment_billing_periods.billing_period_id', selectedPeriod)
+        .order('created_at', { ascending: false })
+      payments = data
+    } else if (selectedPeriod === 'all') {
+      const { data } = await supabase
         .from('payments')
         .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(id, period_year, period_month))')
         .order('created_at', { ascending: false })
-        .limit(50),
-      supabase
-        .from('billing_periods')
-        .select('id, period_year, period_month')
-        .order('period_year')
-        .order('period_month'),
-    ])
+      payments = data
+    } else {
+      const { data } = await supabase
+        .from('payments')
+        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(id, period_year, period_month))')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      payments = data
+    }
 
     const sortedPayments = (payments ?? []).sort((a, b) => {
       const unitA = a.units?.unit_number ?? 0
@@ -40,14 +60,17 @@ export default async function PaymentsPage() {
 
     return (
       <div>
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--navy)' }}>Pagos</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Revisa y verifica los comprobantes de pago de los vecinos
             </p>
           </div>
-          <AdminPaymentButton />
+          <div className="flex items-center gap-3">
+            <PeriodFilterSelect periods={allBillingPeriods ?? []} selected={selectedPeriod} />
+            <AdminPaymentButton />
+          </div>
         </div>
 
         {/* Tabla de pagos */}
@@ -147,7 +170,9 @@ export default async function PaymentsPage() {
 
           {(!payments || payments.length === 0) && (
             <div className="py-16 text-center">
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>No hay pagos registrados aún.</p>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {selectedPeriod ? 'No hay pagos registrados para este periodo.' : 'No hay pagos registrados aún.'}
+              </p>
             </div>
           )}
         </div>
