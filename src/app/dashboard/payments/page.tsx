@@ -123,7 +123,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                     </td>
                     <td className="px-5 py-3.5">
                       {p.status === 'pending_review' ? (
-                        <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} receiptUrl={p.receipt_url} />
+                        <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} unitId={p.unit_id} receiptUrl={p.receipt_url} />
                       ) : (
                         <PaymentActions payment={p} billingPeriods={allBillingPeriods ?? []} />
                       )}
@@ -159,7 +159,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 </div>
                 <div className="mt-2">
                   {p.status === 'pending_review' ? (
-                    <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} receiptUrl={p.receipt_url} />
+                    <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} unitId={p.unit_id} receiptUrl={p.receipt_url} />
                   ) : (
                     <PaymentActions payment={p} billingPeriods={allBillingPeriods ?? []} />
                   )}
