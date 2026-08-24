@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { X, Upload, CheckCircle, AlertCircle } from 'lucide-react'
-import { formatMXN } from '@/lib/utils'
+import { formatMXN, formatDate } from '@/lib/utils'
 
 interface Unit { id: string; unit_number: string }
 interface BillingPeriod { id: string; period_year: number; period_month: number; status: string }
@@ -23,6 +23,9 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [pendingCharges, setPendingCharges] = useState<any[]>([])
+  const [selectedCharges, setSelectedCharges] = useState<Set<string>>(new Set())
+  const [loadingCharges, setLoadingCharges] = useState(false)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
@@ -38,6 +41,23 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
     }
     load()
   }, [])
+
+  useEffect(() => {
+    if (!unitId) { setPendingCharges([]); setSelectedCharges(new Set()); return }
+    async function loadCharges() {
+      setLoadingCharges(true)
+      const { data } = await supabase
+        .from('charges')
+        .select('id, description, amount, paid_amount, due_date, status, fee_concepts(name)')
+        .eq('unit_id', unitId)
+        .in('status', ['pending', 'partial'])
+        .order('due_date')
+      setPendingCharges(data ?? [])
+      setSelectedCharges(new Set())
+      setLoadingCharges(false)
+    }
+    loadCharges()
+  }, [unitId])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -59,7 +79,7 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
       receipt_url = publicUrl
     }
 
-    // Crear pago directamente como verificado
+    // Crear pago como pending_review primero
     const { data: newPayment, error: insertErr } = await supabase.from('payments').insert({
       unit_id: unitId,
       amount: parseFloat(amount),
@@ -67,13 +87,28 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
       reference: reference.trim() || null,
       notes: notes.trim() || null,
       receipt_url,
-      status: 'verified',
+      status: 'pending_review',
       submitted_by: user.id,
-      verified_by: user.id,
-      verified_at: new Date().toISOString(),
     }).select('id').single()
 
     if (insertErr) { setError(insertErr.message); setLoading(false); return }
+
+    // Vincular cargos seleccionados ANTES de verificar
+    if (newPayment && selectedCharges.size > 0) {
+      await supabase.from('payment_charges').insert(
+        Array.from(selectedCharges).map(chargeId => ({
+          payment_id: newPayment.id,
+          charge_id: chargeId,
+        }))
+      )
+    }
+
+    // Ahora verificar — el trigger lee payment_charges correctamente
+    await supabase.from('payments').update({
+      status: 'verified',
+      verified_by: user.id,
+      verified_at: new Date().toISOString(),
+    }).eq('id', newPayment.id)
 
     if (newPayment && selectedPeriods.size > 0) {
       await supabase.from('payment_billing_periods').insert(
@@ -138,6 +173,42 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
               className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--border)' }} />
           </div>
         </div>
+
+        {pendingCharges.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>¿A qué cargo(s) aplicar?</label>
+            <div className="rounded-lg border p-3 flex flex-col gap-1.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-page)' }}>
+              {pendingCharges.map((c: any) => {
+                const remaining = Number(c.amount) - Number(c.paid_amount)
+                const checked = selectedCharges.has(c.id)
+                return (
+                  <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const next = new Set(selectedCharges)
+                        checked ? next.delete(c.id) : next.add(c.id)
+                        setSelectedCharges(next)
+                      }}
+                      className="accent-blue-600 w-4 h-4 rounded"
+                    />
+                    <span className="flex-1" style={{ color: 'var(--text-primary)' }}>
+                      {c.description || c.fee_concepts?.name} · vence {formatDate(c.due_date)}
+                    </span>
+                    <span className="font-semibold" style={{ color: 'var(--navy)' }}>{formatMXN(remaining)}</span>
+                  </label>
+                )
+              })}
+              {selectedCharges.size === 0 && (
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>Sin selección = FIFO automático</p>
+              )}
+            </div>
+          </div>
+        )}
+        {loadingCharges && (
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Cargando cargos...</p>
+        )}
 
         {billingPeriods.length > 0 && (
           <div>

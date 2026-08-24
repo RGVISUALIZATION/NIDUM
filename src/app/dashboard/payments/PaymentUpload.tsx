@@ -26,6 +26,7 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
   const supabase = createClient()
   const [amount, setAmount] = useState('')
   const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set())
+  const [selectedCharges, setSelectedCharges] = useState<Set<string>>(new Set())
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
@@ -87,6 +88,15 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
       )
     }
 
+    if (newPayment && selectedCharges.size > 0) {
+      await supabase.from('payment_charges').insert(
+        Array.from(selectedCharges).map(chargeId => ({
+          payment_id: newPayment.id,
+          charge_id: chargeId,
+        }))
+      )
+    }
+
     setSuccess(true)
     setLoading(false)
   }
@@ -100,7 +110,7 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
           La administración revisará tu comprobante y actualizará tu estado de cuenta en breve.
         </p>
         <button
-          onClick={() => { setSuccess(false); setAmount(''); setReference(''); setNotes(''); setFile(null); setSelectedPeriods(new Set()) }}
+          onClick={() => { setSuccess(false); setAmount(''); setReference(''); setNotes(''); setFile(null); setSelectedPeriods(new Set()); setSelectedCharges(new Set()) }}
           className="text-sm font-medium mt-2"
           style={{ color: 'var(--blue-action)' }}
         >
@@ -123,13 +133,29 @@ export default function PaymentUpload({ unitId, unitNumber, pendingCharges, user
 
       {pendingCharges.length > 0 && (
         <div className="mb-5 rounded-lg border p-3 flex flex-col gap-1.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-page)' }}>
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Cargos pendientes</p>
-          {pendingCharges.map(c => (
-            <div key={c.id} className="flex justify-between text-sm">
-              <span style={{ color: 'var(--text-primary)' }}>{c.fee_concepts?.name} · vence {formatDate(c.due_date)}</span>
-              <span className="font-semibold" style={{ color: 'var(--navy)' }}>{formatMXN(Number(c.amount) - Number(c.paid_amount))}</span>
-            </div>
-          ))}
+          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>¿A qué cargo(s) va este pago?</p>
+          {pendingCharges.map(c => {
+            const remaining = Number(c.amount) - Number(c.paid_amount)
+            const checked = selectedCharges.has(c.id)
+            return (
+              <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const next = new Set(selectedCharges)
+                    checked ? next.delete(c.id) : next.add(c.id)
+                    setSelectedCharges(next)
+                  }}
+                  className="accent-blue-600 w-4 h-4 rounded"
+                />
+                <span className="flex-1" style={{ color: 'var(--text-primary)' }}>
+                  {c.description || c.fee_concepts?.name} · vence {formatDate(c.due_date)}
+                </span>
+                <span className="font-semibold" style={{ color: 'var(--navy)' }}>{formatMXN(remaining)}</span>
+              </label>
+            )
+          })}
         </div>
       )}
 
