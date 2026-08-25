@@ -20,6 +20,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   if (isAdmin) {
     const params = await searchParams
     const selectedPeriod = params.period ?? ''
+    const showAll = !selectedPeriod || selectedPeriod === 'all'
 
     const { data: allBillingPeriods } = await supabase
       .from('billing_periods')
@@ -28,26 +29,90 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       .order('period_month')
 
     let payments: any[] | null = null
-    if (selectedPeriod && selectedPeriod !== 'all') {
-      const { data } = await supabase
-        .from('payments')
-        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods!inner(billing_period_id, billing_periods(id, period_year, period_month))')
-        .eq('payment_billing_periods.billing_period_id', selectedPeriod)
-        .order('created_at', { ascending: false })
-      payments = data
-    } else if (selectedPeriod === 'all') {
-      const { data } = await supabase
-        .from('payments')
-        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(id, period_year, period_month))')
-        .order('created_at', { ascending: false })
-      payments = data
+
+    if (!showAll) {
+      const { data: periodCharges } = await supabase
+        .from('charges')
+        .select('id')
+        .eq('billing_period_id', selectedPeriod)
+      const periodChargeIds = (periodCharges ?? []).map(c => c.id)
+
+      let paymentIdsFromCharges: string[] = []
+      if (periodChargeIds.length > 0) {
+        const { data: pc } = await supabase
+          .from('payment_charges')
+          .select('payment_id')
+          .in('charge_id', periodChargeIds)
+        paymentIdsFromCharges = (pc ?? []).map(r => r.payment_id)
+      }
+
+      const { data: pbp } = await supabase
+        .from('payment_billing_periods')
+        .select('payment_id')
+        .eq('billing_period_id', selectedPeriod)
+      const paymentIdsFromLegacy = (pbp ?? []).map(r => r.payment_id)
+
+      const paymentIds = Array.from(new Set([...paymentIdsFromCharges, ...paymentIdsFromLegacy]))
+
+      if (paymentIds.length > 0) {
+        const { data } = await supabase
+          .from('payments')
+          .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name)')
+          .in('id', paymentIds)
+          .order('created_at', { ascending: false })
+        payments = data
+      } else {
+        payments = []
+      }
     } else {
       const { data } = await supabase
         .from('payments')
-        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name), payment_billing_periods(billing_periods(id, period_year, period_month))')
+        .select('*, units(unit_number, floor), profiles!payments_submitted_by_fkey(full_name)')
         .order('created_at', { ascending: false })
-        .limit(50)
       payments = data
+    }
+
+    const paymentIdsForBadges = (payments ?? []).map(p => p.id)
+    const periodsByPayment: Record<string, { period_year: number; period_month: number }[]> = {}
+
+    if (paymentIdsForBadges.length > 0) {
+      const { data: legacyLinks } = await supabase
+        .from('payment_billing_periods')
+        .select('payment_id, billing_periods(id, period_year, period_month)')
+        .in('payment_id', paymentIdsForBadges)
+
+      legacyLinks?.forEach((row: any) => {
+        if (!row.billing_periods) return
+        if (!periodsByPayment[row.payment_id]) periodsByPayment[row.payment_id] = []
+        periodsByPayment[row.payment_id].push({
+          period_year: row.billing_periods.period_year,
+          period_month: row.billing_periods.period_month,
+        })
+      })
+
+      const { data: chargeLinks } = await supabase
+        .from('payment_charges')
+        .select('payment_id, charges(billing_period_id)')
+        .in('payment_id', paymentIdsForBadges)
+
+      const periodById = new Map((allBillingPeriods ?? []).map(bp => [bp.id, bp]))
+
+      chargeLinks?.forEach((row: any) => {
+        const bpId = (row.charges as any)?.billing_period_id
+        if (!bpId) return
+        const bp = periodById.get(bpId)
+        if (!bp) return
+        if (!periodsByPayment[row.payment_id]) periodsByPayment[row.payment_id] = []
+        const already = periodsByPayment[row.payment_id].some(
+          p => p.period_year === bp.period_year && p.period_month === bp.period_month
+        )
+        if (!already) {
+          periodsByPayment[row.payment_id].push({
+            period_year: bp.period_year,
+            period_month: bp.period_month,
+          })
+        }
+      })
     }
 
     const sortedPayments = (payments ?? []).sort((a, b) => {
@@ -103,11 +168,11 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                       {p.reference ?? '—'}
                     </td>
                     <td className="px-5 py-3.5">
-                      {(p as any).payment_billing_periods?.length > 0 ? (
+                      {periodsByPayment[p.id]?.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {(p as any).payment_billing_periods.map((pbp: any, idx: number) => (
+                          {periodsByPayment[p.id].map((per, idx) => (
                             <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action)' }}>
-                              {MONTH_SHORT[pbp.billing_periods.period_month - 1]} {pbp.billing_periods.period_year}
+                              {MONTH_SHORT[per.period_month - 1]} {per.period_year}
                             </span>
                           ))}
                         </div>
@@ -142,11 +207,11 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--navy)' }}>Depto {p.units?.unit_number}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{formatDate(p.payment_date)}</p>
-                    {(p as any).payment_billing_periods?.length > 0 && (
+                    {periodsByPayment[p.id]?.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {(p as any).payment_billing_periods.map((pbp: any, idx: number) => (
+                        {periodsByPayment[p.id].map((per, idx) => (
                           <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action)' }}>
-                            {MONTH_SHORT[pbp.billing_periods.period_month - 1]} {pbp.billing_periods.period_year}
+                            {MONTH_SHORT[per.period_month - 1]} {per.period_year}
                           </span>
                         ))}
                       </div>
