@@ -37,8 +37,15 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         .eq('billing_period_id', selectedPeriod)
       const periodChargeIds = (periodCharges ?? []).map(c => c.id)
 
+      let paymentIdsFromAllocations: string[] = []
       let paymentIdsFromCharges: string[] = []
       if (periodChargeIds.length > 0) {
+        const { data: pa } = await supabase
+          .from('payment_allocations')
+          .select('payment_id')
+          .in('charge_id', periodChargeIds)
+        paymentIdsFromAllocations = (pa ?? []).map(r => r.payment_id)
+
         const { data: pc } = await supabase
           .from('payment_charges')
           .select('payment_id')
@@ -52,7 +59,11 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         .eq('billing_period_id', selectedPeriod)
       const paymentIdsFromLegacy = (pbp ?? []).map(r => r.payment_id)
 
-      const paymentIds = Array.from(new Set([...paymentIdsFromCharges, ...paymentIdsFromLegacy]))
+      const paymentIds = Array.from(new Set([
+        ...paymentIdsFromAllocations,
+        ...paymentIdsFromCharges,
+        ...paymentIdsFromLegacy,
+      ]))
 
       if (paymentIds.length > 0) {
         const { data } = await supabase
@@ -74,44 +85,44 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
     const paymentIdsForBadges = (payments ?? []).map(p => p.id)
     const periodsByPayment: Record<string, { period_year: number; period_month: number }[]> = {}
+    const periodById = new Map((allBillingPeriods ?? []).map(bp => [bp.id, bp]))
+
+    function addPeriod(paymentId: string, bpId: string | null | undefined) {
+      if (!bpId) return
+      const bp = periodById.get(bpId)
+      if (!bp) return
+      if (!periodsByPayment[paymentId]) periodsByPayment[paymentId] = []
+      const already = periodsByPayment[paymentId].some(
+        p => p.period_year === bp.period_year && p.period_month === bp.period_month
+      )
+      if (!already) {
+        periodsByPayment[paymentId].push({ period_year: bp.period_year, period_month: bp.period_month })
+      }
+    }
 
     if (paymentIdsForBadges.length > 0) {
-      const { data: legacyLinks } = await supabase
-        .from('payment_billing_periods')
-        .select('payment_id, billing_periods(id, period_year, period_month)')
+      const { data: allocationLinks } = await supabase
+        .from('payment_allocations')
+        .select('payment_id, charges(billing_period_id)')
         .in('payment_id', paymentIdsForBadges)
-
-      legacyLinks?.forEach((row: any) => {
-        if (!row.billing_periods) return
-        if (!periodsByPayment[row.payment_id]) periodsByPayment[row.payment_id] = []
-        periodsByPayment[row.payment_id].push({
-          period_year: row.billing_periods.period_year,
-          period_month: row.billing_periods.period_month,
-        })
+      allocationLinks?.forEach((row: any) => {
+        addPeriod(row.payment_id, row.charges?.billing_period_id)
       })
 
       const { data: chargeLinks } = await supabase
         .from('payment_charges')
         .select('payment_id, charges(billing_period_id)')
         .in('payment_id', paymentIdsForBadges)
-
-      const periodById = new Map((allBillingPeriods ?? []).map(bp => [bp.id, bp]))
-
       chargeLinks?.forEach((row: any) => {
-        const bpId = (row.charges as any)?.billing_period_id
-        if (!bpId) return
-        const bp = periodById.get(bpId)
-        if (!bp) return
-        if (!periodsByPayment[row.payment_id]) periodsByPayment[row.payment_id] = []
-        const already = periodsByPayment[row.payment_id].some(
-          p => p.period_year === bp.period_year && p.period_month === bp.period_month
-        )
-        if (!already) {
-          periodsByPayment[row.payment_id].push({
-            period_year: bp.period_year,
-            period_month: bp.period_month,
-          })
-        }
+        addPeriod(row.payment_id, row.charges?.billing_period_id)
+      })
+
+      const { data: legacyLinks } = await supabase
+        .from('payment_billing_periods')
+        .select('payment_id, billing_period_id')
+        .in('payment_id', paymentIdsForBadges)
+      legacyLinks?.forEach((row: any) => {
+        addPeriod(row.payment_id, row.billing_period_id)
       })
     }
 
