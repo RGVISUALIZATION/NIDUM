@@ -7,16 +7,11 @@ import { X, Upload, CheckCircle, AlertCircle } from 'lucide-react'
 import { formatMXN, formatDate } from '@/lib/utils'
 
 interface Unit { id: string; unit_number: string }
-interface BillingPeriod { id: string; period_year: number; period_month: number; status: string }
-
-const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
   const supabase = createClient()
   const router = useRouter()
   const [units, setUnits] = useState<Unit[]>([])
-  const [billingPeriods, setBillingPeriods] = useState<BillingPeriod[]>([])
-  const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set())
   const [unitId, setUnitId] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
@@ -32,12 +27,8 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     async function load() {
-      const [unitsRes, periodsRes] = await Promise.all([
-        supabase.from('units').select('id, unit_number').eq('status', 'active').order('unit_number'),
-        supabase.from('billing_periods').select('id, period_year, period_month, status').order('period_year').order('period_month'),
-      ])
-      if (unitsRes.data) setUnits(unitsRes.data)
-      if (periodsRes.data) setBillingPeriods(periodsRes.data)
+      const { data: unitsData } = await supabase.from('units').select('id, unit_number').eq('status', 'active').order('unit_number')
+      if (unitsData) setUnits(unitsData)
     }
     load()
   }, [])
@@ -109,15 +100,6 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
       verified_by: user.id,
       verified_at: new Date().toISOString(),
     }).eq('id', newPayment.id)
-
-    if (newPayment && selectedPeriods.size > 0) {
-      await supabase.from('payment_billing_periods').insert(
-        Array.from(selectedPeriods).map(periodId => ({
-          payment_id: newPayment.id,
-          billing_period_id: periodId,
-        }))
-      )
-    }
 
     setSuccess(true)
     setLoading(false)
@@ -208,36 +190,6 @@ export default function AdminPaymentForm({ onClose }: { onClose: () => void }) {
         )}
         {loadingCharges && (
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Cargando cargos...</p>
-        )}
-
-        {billingPeriods.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>¿A qué mes(es) corresponde este pago?</label>
-            <div className="flex flex-wrap gap-2">
-              {billingPeriods.map(bp => {
-                const selected = selectedPeriods.has(bp.id)
-                return (
-                  <button
-                    key={bp.id}
-                    type="button"
-                    onClick={() => {
-                      const next = new Set(selectedPeriods)
-                      selected ? next.delete(bp.id) : next.add(bp.id)
-                      setSelectedPeriods(next)
-                    }}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors"
-                    style={{
-                      borderColor: selected ? 'var(--blue-action)' : 'var(--border)',
-                      backgroundColor: selected ? 'var(--blue-action)' : 'transparent',
-                      color: selected ? '#fff' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {MONTH_NAMES[bp.period_month - 1]} {bp.period_year}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
         )}
 
         <div>
