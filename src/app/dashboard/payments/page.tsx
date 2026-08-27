@@ -53,16 +53,9 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         paymentIdsFromCharges = (pc ?? []).map(r => r.payment_id)
       }
 
-      const { data: pbp } = await supabase
-        .from('payment_billing_periods')
-        .select('payment_id')
-        .eq('billing_period_id', selectedPeriod)
-      const paymentIdsFromLegacy = (pbp ?? []).map(r => r.payment_id)
-
       const paymentIds = Array.from(new Set([
         ...paymentIdsFromAllocations,
         ...paymentIdsFromCharges,
-        ...paymentIdsFromLegacy,
       ]))
 
       if (paymentIds.length > 0) {
@@ -117,14 +110,16 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         addPeriod(row.payment_id, row.charges?.billing_period_id)
       })
 
-      const { data: legacyLinks } = await supabase
-        .from('payment_billing_periods')
-        .select('payment_id, billing_period_id')
-        .in('payment_id', paymentIdsForBadges)
-      legacyLinks?.forEach((row: any) => {
-        addPeriod(row.payment_id, row.billing_period_id)
-      })
     }
+
+    // Query credit balances (saldo a favor) per payment
+    const { data: allCredits } = await supabase
+      .from('unit_credits')
+      .select('id, source_payment_id, remaining_amount')
+    const creditsByPayment: Record<string, { id: string; remaining: number }> = {}
+    allCredits?.forEach((c: any) => {
+      creditsByPayment[c.source_payment_id] = { id: c.id, remaining: Number(c.remaining_amount) }
+    })
 
     const sortedPayments = (payments ?? []).sort((a, b) => {
       const unitA = a.units?.unit_number ?? 0
@@ -172,8 +167,13 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                     <td className="px-5 py-3.5" style={{ color: 'var(--text-secondary)' }}>
                       {formatDate(p.payment_date)}
                     </td>
-                    <td className="px-5 py-3.5 font-semibold" style={{ color: 'var(--navy)' }}>
-                      {formatMXN(p.amount)}
+                    <td className="px-5 py-3.5" style={{ color: 'var(--navy)' }}>
+                      <span className="font-semibold">{formatMXN(p.amount)}</span>
+                      {creditsByPayment[p.id]?.remaining > 0 && (
+                        <span className="block text-[10px] font-medium text-emerald-600 mt-0.5">
+                          Saldo: +{formatMXN(creditsByPayment[p.id].remaining)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {p.reference ?? '—'}
@@ -201,7 +201,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                       {p.status === 'pending_review' ? (
                         <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} unitId={p.unit_id} receiptUrl={p.receipt_url} />
                       ) : (
-                        <PaymentActions payment={p} billingPeriods={allBillingPeriods ?? []} />
+                        <PaymentActions payment={p} creditBalance={creditsByPayment[p.id]?.remaining ?? 0} creditId={creditsByPayment[p.id]?.id ?? null} />
                       )}
                     </td>
                   </tr>
@@ -230,6 +230,11 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-sm" style={{ color: 'var(--navy)' }}>{formatMXN(p.amount)}</p>
+                    {creditsByPayment[p.id]?.remaining > 0 && (
+                      <span className="text-[10px] font-medium text-emerald-600">
+                        Saldo: +{formatMXN(creditsByPayment[p.id].remaining)}
+                      </span>
+                    )}
                     <Badge label={PAYMENT_STATUS_LABEL[p.status as keyof typeof PAYMENT_STATUS_LABEL]} colorClass={PAYMENT_STATUS_COLOR[p.status as keyof typeof PAYMENT_STATUS_COLOR]} />
                   </div>
                 </div>
@@ -237,7 +242,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   {p.status === 'pending_review' ? (
                     <PaymentVerify paymentId={p.id} amount={p.amount} unitNumber={p.units?.unit_number} unitId={p.unit_id} receiptUrl={p.receipt_url} />
                   ) : (
-                    <PaymentActions payment={p} billingPeriods={allBillingPeriods ?? []} />
+                    <PaymentActions payment={p} creditBalance={creditsByPayment[p.id]?.remaining ?? 0} creditId={creditsByPayment[p.id]?.id ?? null} />
                   )}
                 </div>
               </div>
@@ -272,12 +277,6 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         .in('status', ['pending', 'partial'])
         .order('due_date')
     : { data: [] }
-
-  const { data: billingPeriods } = await supabase
-    .from('billing_periods')
-    .select('id, period_year, period_month, status')
-    .order('period_year')
-    .order('period_month')
 
   const { data: myPayments } = residency?.unit_id
     ? await supabase
@@ -318,7 +317,6 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             unitNumber={(residency.units as any).unit_number}
             pendingCharges={pendingCharges ?? []}
             userId={user.id}
-            billingPeriods={billingPeriods ?? []}
           />
 
           <div className="mt-8">
