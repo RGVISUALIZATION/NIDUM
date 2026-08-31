@@ -96,7 +96,13 @@ function formatDate(d: string) {
   })
 }
 
-function formatPeriods(p: Payment): string {
+function formatPeriods(p: Payment, periodsByPayment: Record<string, { period_year: number; period_month: number }[]>): string {
+  const resolved = periodsByPayment[p.id]
+  if (resolved && resolved.length > 0) {
+    return resolved
+      .map(per => `${MONTHS[per.period_month - 1]?.slice(0, 3)} ${per.period_year}`)
+      .join(', ')
+  }
   if (!p.payment_billing_periods || p.payment_billing_periods.length === 0) return ''
   return p.payment_billing_periods
     .map(pbp => `${MONTHS[pbp.billing_periods.period_month - 1]?.slice(0, 3)} ${pbp.billing_periods.period_year}`)
@@ -113,6 +119,7 @@ export default function AccountingClient() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [charges, setCharges] = useState<Charge[]>([])
   const [periods, setPeriods] = useState<BillingPeriod[]>([])
+  const [periodsByPayment, setPeriodsByPayment] = useState<Record<string, { period_year: number; period_month: number }[]>>({})
 
   // filters
   const [viewMode, setViewMode] = useState<ViewMode>('period')
@@ -146,6 +153,37 @@ export default function AccountingClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /* ── resolve real periods from payment_allocations / payment_charges ── */
+  const buildPeriodsByPayment = useCallback(async (payIds: string[]) => {
+    if (payIds.length === 0) return {}
+    const periodById = new Map(periods.map(bp => [bp.id, bp]))
+    const map: Record<string, { period_year: number; period_month: number }[]> = {}
+    function addPeriod(paymentId: string, bpId: string | null | undefined) {
+      if (!bpId) return
+      const bp = periodById.get(bpId)
+      if (!bp) return
+      if (!map[paymentId]) map[paymentId] = []
+      const already = map[paymentId].some(
+        p => p.period_year === bp.period_year && p.period_month === bp.period_month
+      )
+      if (!already) map[paymentId].push({ period_year: bp.period_year, period_month: bp.period_month })
+    }
+
+    const { data: allocationLinks } = await supabase
+      .from('payment_allocations')
+      .select('payment_id, charges(billing_period_id)')
+      .in('payment_id', payIds)
+    allocationLinks?.forEach((row: any) => addPeriod(row.payment_id, row.charges?.billing_period_id))
+
+    const { data: chargeLinks } = await supabase
+      .from('payment_charges')
+      .select('payment_id, charges(billing_period_id)')
+      .in('payment_id', payIds)
+    chargeLinks?.forEach((row: any) => addPeriod(row.payment_id, row.charges?.billing_period_id))
+
+    return map
+  }, [periods, supabase])
+
   /* ── fetch payments & charges on filter change ── */
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -171,6 +209,8 @@ export default function AccountingClient() {
       if (payData) {
         setPayments(payData as unknown as Payment[])
         const payIds = payData.map((p: any) => p.id)
+        const periodMap = await buildPeriodsByPayment(payIds)
+        setPeriodsByPayment(periodMap)
         if (payIds.length > 0) {
           const { data: invData } = await supabase
             .from('payment_invoices')
@@ -226,6 +266,8 @@ export default function AccountingClient() {
       if (payData) {
         setPayments(payData as unknown as Payment[])
         const payIds = payData.map((p: any) => p.id)
+        const periodMap = await buildPeriodsByPayment(payIds)
+        setPeriodsByPayment(periodMap)
         if (payIds.length > 0) {
           const { data: invData } = await supabase
             .from('payment_invoices')
@@ -254,7 +296,7 @@ export default function AccountingClient() {
 
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedUnit, selectedYear, selectedMonth, statusFilter, periods])
+  }, [viewMode, selectedUnit, selectedYear, selectedMonth, statusFilter, periods, buildPeriodsByPayment])
 
   useEffect(() => {
     if (periods.length > 0 || viewMode === 'unit') {
@@ -357,7 +399,7 @@ export default function AccountingClient() {
         p.payment_date,
         p.amount,
         p.reference || '',
-        formatPeriods(p),
+        formatPeriods(p, periodsByPayment),
         STATUS_LABELS[p.status] || p.status,
         concept,
       ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
@@ -385,7 +427,7 @@ export default function AccountingClient() {
 
     const rowsHtml = filteredPayments.map(p => {
       const owner = ownerMap.get(p.unit_id)
-      const periodLabel = formatPeriods(p)
+      const periodLabel = formatPeriods(p, periodsByPayment)
       return `<tr>
         <td>${p.units?.unit_number || ''}</td>
         <td>${owner?.owner_name || ''}</td>
@@ -688,17 +730,32 @@ export default function AccountingClient() {
                         {p.reference || '—'}
                       </td>
                       <td className="px-4 py-3">
-                        {p.payment_billing_periods && p.payment_billing_periods.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {p.payment_billing_periods.map((pbp, idx) => (
-                              <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action, #2563eb)' }}>
-                                {MONTHS[pbp.billing_periods.period_month - 1]?.slice(0, 3)} {pbp.billing_periods.period_year}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>—</span>
-                        )}
+                        {(() => {
+                          const resolved = periodsByPayment[p.id]
+                          if (resolved && resolved.length > 0) {
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {resolved.map((per, idx) => (
+                                  <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action, #2563eb)' }}>
+                                    {MONTHS[per.period_month - 1]?.slice(0, 3)} {per.period_year}
+                                  </span>
+                                ))}
+                              </div>
+                            )
+                          }
+                          if (p.payment_billing_periods && p.payment_billing_periods.length > 0) {
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {p.payment_billing_periods.map((pbp, idx) => (
+                                  <span key={idx} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--blue-action, #2563eb)' }}>
+                                    {MONTHS[pbp.billing_periods.period_month - 1]?.slice(0, 3)} {pbp.billing_periods.period_year}
+                                  </span>
+                                ))}
+                              </div>
+                            )
+                          }
+                          return <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>—</span>
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span
