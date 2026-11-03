@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ChevronLeft, AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, AlertCircle, CheckCircle, AlertTriangle, Camera, X } from 'lucide-react'
 import { formatMXN } from '@/lib/utils'
 
 interface Unit { id: string; unit_number: string; floor: number | null }
@@ -28,6 +28,8 @@ export default function MultaPage() {
   const [dueDate, setDueDate] = useState(
     new Date(now.getFullYear(), now.getMonth(), now.getDate() + 15).toISOString().split('T')[0]
   )
+  const [incidentDate, setIncidentDate] = useState(now.toISOString().split('T')[0])
+  const [files, setFiles] = useState<File[]>([])
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
@@ -73,34 +75,36 @@ export default function MultaPage() {
     setLoading(true)
     setError('')
 
-    // Encontrar el concept_id de 'penalty'
-    const { data: concept } = await supabase
-      .from('fee_concepts')
-      .select('id')
-      .eq('code', 'penalty')
-      .single()
+    const { data: fineId, error: err } = await supabase.rpc('create_fine', {
+      p_unit_id: unitId,
+      p_penalty_type_id: typeId,
+      p_amount: amountNum,
+      p_description: description.trim() || null,
+      p_incident_date: incidentDate,
+      p_due_date: dueDate,
+    })
 
-    if (!concept) {
-      setError('No se encontró el concepto de multa')
+    if (err || !fineId) {
+      setError(err?.message ?? 'No se pudo registrar la multa')
       setLoading(false)
       return
     }
 
-    const desc = selectedType!.name + (description.trim() ? ` — ${description.trim()}` : '')
-
-    const { error: err } = await supabase.from('charges').insert({
-      unit_id: unitId,
-      concept_id: concept.id,
-      description: desc,
-      amount: amountNum,
-      due_date: dueDate,
-      status: 'pending',
-    })
-
-    if (err) {
-      setError(err.message)
-      setLoading(false)
-      return
+    if (files.length > 0) {
+      const paths: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg'
+        const path = `${unitId}/${fineId}/${i + 1}-${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('fine-evidence').upload(path, f, { contentType: f.type })
+        if (!upErr) paths.push(path)
+      }
+      if (paths.length > 0) {
+        await supabase.from('fines').update({ evidence_paths: paths }).eq('id', fineId)
+      }
+      if (paths.length < files.length) {
+        setError(`Multa registrada, pero ${files.length - paths.length} foto(s) no se pudieron subir`)
+      }
     }
 
     setSuccess(true)
@@ -125,6 +129,7 @@ export default function MultaPage() {
               setTypeId('')
               setAmount('')
               setDescription('')
+              setFiles([])
             }}
             className="px-4 py-2 rounded-lg border text-sm font-medium"
             style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
@@ -132,11 +137,11 @@ export default function MultaPage() {
             Asignar otra multa
           </button>
           <button
-            onClick={() => router.push('/dashboard/charges')}
+            onClick={() => router.push('/dashboard/multas')}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
             style={{ backgroundColor: 'var(--blue-action)' }}
           >
-            Ver cargos
+            Ver multas
           </button>
         </div>
       </div>
@@ -243,6 +248,64 @@ export default function MultaPage() {
               style={{ borderColor: 'var(--border)' }}
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            Fecha del hecho *
+          </label>
+          <input
+            required
+            type="date"
+            value={incidentDate}
+            onChange={e => setIncidentDate(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+            style={{ borderColor: 'var(--border)' }}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            Evidencia (fotos)
+          </label>
+          <label
+            className="flex items-center justify-center gap-2 w-full px-3 py-3 rounded-lg border border-dashed text-sm cursor-pointer"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            <Camera size={16} />
+            Agregar fotos
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={e => {
+                const picked = Array.from(e.target.files ?? [])
+                setFiles(prev => [...prev, ...picked])
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {files.length > 0 && (
+            <div className="grid grid-cols-4 gap-2 mt-2">
+              {files.map((f, i) => (
+                <div key={i} className="relative aspect-square rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+            El vecino podrá ver estas fotos
+          </p>
         </div>
 
         <div>

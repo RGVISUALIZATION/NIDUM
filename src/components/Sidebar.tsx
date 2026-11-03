@@ -21,6 +21,7 @@ import {
   Menu,
   X,
   KeyRound,
+  Gavel,
 } from 'lucide-react'
 import { Profile } from '@/lib/types'
 import { useState } from 'react'
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',                label: 'Inicio',         icon: LayoutDashboard },
   { href: '/dashboard/units',          label: 'Departamentos',  icon: Home,            adminOnly: true },
   { href: '/dashboard/charges',        label: 'Cargos',         icon: CreditCard,      adminOnly: true },
+  { href: '/dashboard/multas',         label: 'Multas',         icon: Gavel },
   { href: '/dashboard/payments',       label: 'Pagos',          icon: Upload },
   { href: '/dashboard/periods',        label: 'Periodos',       icon: Calendar,        adminOnly: true },
   { href: '/dashboard/accounting',     label: 'Contabilidad',   icon: FileSpreadsheet, visibleTo: ['accountant'] },
