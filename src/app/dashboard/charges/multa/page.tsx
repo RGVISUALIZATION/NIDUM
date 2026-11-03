@@ -99,10 +99,19 @@ export default function MultaPage() {
         const { error: upErr } = await supabase.storage.from('fine-evidence').upload(path, f, { contentType: f.type })
         if (!upErr) paths.push(path)
       }
+      let linkFailed = false
       if (paths.length > 0) {
-        await supabase.from('fines').update({ evidence_paths: paths }).eq('id', fineId)
+        // .select() porque un update bloqueado por RLS no devuelve error, solo 0 filas
+        const { data: linked, error: linkErr } = await supabase
+          .from('fines')
+          .update({ evidence_paths: paths })
+          .eq('id', fineId)
+          .select('id')
+        linkFailed = !!linkErr || !linked?.length
       }
-      if (paths.length < files.length) {
+      if (linkFailed) {
+        setError('Multa registrada, pero las fotos no se pudieron vincular a la multa')
+      } else if (paths.length < files.length) {
         setError(`Multa registrada, pero ${files.length - paths.length} foto(s) no se pudieron subir`)
       }
     }
@@ -121,6 +130,12 @@ export default function MultaPage() {
         <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
           Se asignó la multa al departamento <strong>{selectedUnit?.unit_number}</strong> por <strong>{formatMXN(parseFloat(amount))}</strong>
         </p>
+        {error && (
+          <div className="flex items-center gap-2 text-sm text-left text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+            <AlertTriangle size={15} className="shrink-0" />
+            {error}
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           <button
             onClick={() => {
@@ -130,6 +145,7 @@ export default function MultaPage() {
               setAmount('')
               setDescription('')
               setFiles([])
+              setError('')
             }}
             className="px-4 py-2 rounded-lg border text-sm font-medium"
             style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
