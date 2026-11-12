@@ -15,6 +15,7 @@ import {
   TrendingDown,
   ScrollText,
   Megaphone,
+  Paintbrush,
   FileSpreadsheet,
   LogOut,
   ChevronRight,
@@ -45,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/maintenance',    label: 'Mantenimiento',  icon: Wrench },
   { href: '/dashboard/egresos',        label: 'Egresos',        icon: TrendingDown,    adminOnly: true },
   { href: '/dashboard/transparency',   label: 'Transparencia',  icon: ScrollText },
+  { href: '/dashboard/cotizaciones',   label: 'Cotizaciones',   icon: Paintbrush },
   { href: '/dashboard/avisos',         label: 'Avisos',         icon: Megaphone },
 ]
 
